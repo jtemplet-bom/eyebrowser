@@ -1,26 +1,89 @@
-import React from 'react';
-import logo from './logo.svg';
-import './App.css';
+import React from 'react'
 
-const App = () => {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+import { fromUrl } from 'geotiff'
+import { plot } from 'plotty'
+
+interface IProps {}
+interface IState {
+  cog: COGeoTIFF
+}
+type PropsWithDefaults = IProps & IDefaultProps
+
+type COGeoTIFF = {
+  metadata: object,
+  image: any,
+  data: any
 }
 
-export default App;
+interface IDefaultProps{
+  cog: COGeoTIFF
+}
+
+
+const loadCOG = async () => {
+  // Data to be used by the LineLayer
+  const tiff = await fromUrl('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/IDR00010-20200213-160746-1x-nearest-rgba-bom-radar.tif')
+  const image = await tiff.getImage()
+
+
+  const cog:COGeoTIFF = {
+    metadata: image.getGDALMetadata(),
+    image: image,
+    data: ''
+  }
+
+  return cog
+}
+
+// DeckGL react component
+export default class extends React.PureComponent<IProps, IState> {
+  static defaultProps: Partial<PropsWithDefaults> = {}
+  canvasRef:any = React.createRef()
+
+  constructor(props: IProps) {
+    super(props)
+
+    this.state = {
+      cog: {
+        metadata: {},
+        data: null,
+        image: null
+      }
+    }
+  }
+
+  async componentDidMount() {
+    this.setState({ cog: await loadCOG() })
+  }
+
+  componentWillU
+
+  render() {
+    const { image, metadata } = this.state.cog
+
+    if(image) {
+      console.log(image)
+      console.log(image.getResolution())
+      const data = image.readRasters({
+        fillValue: 0
+      })
+      console.log(data)
+      const geo = new plot({
+        canvas: this.canvasRef.current,
+        data: data,
+        width: 8192,
+        height: 8192,
+        domain: [0, 15],
+        colorScale: "viridis"
+      });
+      geo.render();
+    }
+
+    return (
+      <section>
+        <pre>{JSON.stringify(metadata, null, 2)}</pre>
+        <canvas ref={this.canvasRef} />
+      </section>
+    )
+  }
+}
