@@ -10,9 +10,17 @@
     "@types/node": "^12.12.27",
     "@types/react": "^16.9.19",
     "@types/react-dom": "^16.9.5",
+    "deck.gl": "^8.0.14",
+    "geotiff": "^1.0.0-beta.7",
+    "glsl-canvas-js": "^0.1.7",
+    "konva": "^4.1.5",
+    "plotty": "^0.4.1",
     "react": "^16.12.0",
     "react-dom": "^16.12.0",
+    "react-konva": "^16.12.0-0",
+    "react-map-gl": "^5.2.3",
     "react-scripts": "3.3.1",
+    "shadertoy-react": "^1.1.1",
     "typescript": "^3.7.5"
   },
   "scripts": {
@@ -35,5 +43,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "eslint-config-bom": "^0.5.0"
   }
 }
