@@ -81,20 +81,18 @@ export default class extends React.PureComponent<IProps, IState> {
   async componentDidMount() {
     const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/radartifs/radar-cog.tif')
 
-    const width = 512
-    const height = 512
+    const width = 1024
+    const height = 1024
     const x = 5632
     const y = 5632
     console.log(cog)
     cog.data = await cog.image.readRasters({
       window: [x, y, x+width, y+height],
-      width,
-      height,
-      //samples: [this.state.step],
+      width: width/2,
+      height: height/2,
+      samples: [0,1,2,3,4,5,6,7],
       resampleMethod: 'nearest'
     })
-
-    setInterval(() => this.step(1), (1000/30))
 
     this.setState({ cog })
   }
