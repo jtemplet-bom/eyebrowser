@@ -1,7 +1,7 @@
 import React from 'react'
 
-import { fromUrl } from 'geotiff'
 import { addColorScale, plot } from 'plotty'
+import { fromUrl } from 'geotiff'
 
 interface IProps {}
 interface IState {
@@ -49,7 +49,7 @@ const plottyAvailablePalettes = [
   'blackbody', 'earth', 'electric',
   'magma', 'plasma'
 ]
-const getPaletteGenerator = () => plottyAvailablePalettes[Symbol.iterator]()
+const getPalette = () => plottyAvailablePalettes[Symbol.iterator]()
 
 const clamp = (value: number, min: number, max: number):number => {
   const clamped = Math.min(Math.max(value, min), max)
@@ -61,7 +61,7 @@ const clamp = (value: number, min: number, max: number):number => {
 export default class extends React.PureComponent<IProps, IState> {
   static defaultProps: Partial<PropsWithDefaults> = {}
   canvasRef:any = React.createRef()
-  paletteGenerator = getPaletteGenerator()
+  paletteGenerator = getPalette()
 
   constructor(props: IProps) {
     super(props)
@@ -73,7 +73,7 @@ export default class extends React.PureComponent<IProps, IState> {
         image: null
       },
       imageData: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-      palette: 'viridis',
+      palette: this.paletteGenerator.next().value,
       step: 0
     }
   }
@@ -85,8 +85,10 @@ export default class extends React.PureComponent<IProps, IState> {
     const height = 1024
     const x = 5632
     const y = 5632
-    console.log(cog)
+    //const pool = new GeoTIFF.Pool()
+    
     cog.data = await cog.image.readRasters({
+      //pool,
       window: [x, y, x+width, y+height],
       width: width/2,
       height: height/2,
@@ -101,7 +103,7 @@ export default class extends React.PureComponent<IProps, IState> {
     let next = this.paletteGenerator.next()
 
     if(next.done){
-      this.paletteGenerator = getPaletteGenerator()
+      this.paletteGenerator = getPalette()
       next = this.paletteGenerator.next()
     }
     this.setState({ palette: next.value})
@@ -141,7 +143,7 @@ export default class extends React.PureComponent<IProps, IState> {
       radar.setDomain([0, 15])
       radar.setNoDataValue(0)
       radar.setData(input, data.width, data.height)
-
+      console.log(window.innerWidth, window.innerHeight)
       radar.render()
       //this.setState({imageData: this.canvasRef.current.toDataURL()})
     }
@@ -150,7 +152,9 @@ export default class extends React.PureComponent<IProps, IState> {
       <section>
         <canvas ref={this.canvasRef} style={{
         backgroundColor: '#000000',
-        display: 'block'
+        display: 'block',
+        //width: '100vw',
+        height: '100vh'
         }} />
         <nav style={{
             top: '10px',
@@ -163,6 +167,7 @@ export default class extends React.PureComponent<IProps, IState> {
         </nav>
 
         <pre>{JSON.stringify(this.state.cog.gdal, null, 2)}</pre>
+        
         {/*<img alt="a visual representation of rainfall" src={this.state.imageData} /> */}
       </section>
     )
