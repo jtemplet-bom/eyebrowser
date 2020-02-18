@@ -92,7 +92,7 @@ export default class extends React.PureComponent<IProps, IState> {
       window: [x, y, x+width, y+height],
       width: width/2,
       height: height/2,
-      samples: [0,1,2,3,4,5,6,7],
+      // samples: [0,1,2,3,4,5,6,7],
       resampleMethod: 'nearest'
     })
 
