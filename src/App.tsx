@@ -2,6 +2,7 @@ import React from 'react'
 
 import { addColorScale, plot } from 'plotty'
 import { fromUrl } from 'geotiff'
+import { initCanvasGL, handleLoadedImage } from './shaders/shaders'
 
 interface IProps {}
 interface IState {
@@ -39,16 +40,14 @@ const loadCOG = async (filepath) => {
 }
 
 const plottyAvailablePalettes = [
-  'viridis', 'inferno', 'rainbow',
-  'jet', 'hsv', 'hot',
-  'cool', 'spring', 'summer',
-  'autumn', 'winter', 'bone',
-  'copper', 'greys', 'yignbu',
-  'greens', 'yiorrd', 'bluered',
-  'rdbu', 'picnic', 'portland',
-  'blackbody', 'earth', 'electric',
-  'magma', 'plasma'
+  'viridis', 'inferno', 'jet',
+  'hot', 'bone', 'copper',
+  'greys', 'yignbu', 'greens',
+  'yiorrd', 'rdbu', 'picnic',
+  'portland', 'blackbody', 'earth',
+  'electric',  'magma', 'plasma'
 ]
+
 const getPalette = () => plottyAvailablePalettes[Symbol.iterator]()
 
 const clamp = (value: number, min: number, max: number):number => {
@@ -57,10 +56,26 @@ const clamp = (value: number, min: number, max: number):number => {
   return clamped
 }
 
+const getCanvasImage = (canvas) => {
+  return canvas.toDataURL()
+  const ctx = canvas.getContext("webgl")
+  console.log(canvas, ctx)
+  return ctx.getImageData(0, 0, canvas.width, canvas.height)
+  /*
+  const image = new Image()
+  await canvas.toBlob((blob: Blob) => {
+    image.src = URL.createObjectURL(blob)
+    console.log(image)
+  })
+  return image*/
+}
+
 // DeckGL react component
 export default class extends React.PureComponent<IProps, IState> {
   static defaultProps: Partial<PropsWithDefaults> = {}
   canvasRef:any = React.createRef()
+  shaderRef:any = React.createRef()
+  imageRef:any = React.createRef()
   paletteGenerator = getPalette()
 
   constructor(props: IProps) {
@@ -86,13 +101,13 @@ export default class extends React.PureComponent<IProps, IState> {
     const x = 5632
     const y = 5632
     //const pool = new GeoTIFF.Pool()
-    
+
     cog.data = await cog.image.readRasters({
       //pool,
       window: [x, y, x+width, y+height],
-      width: width/2,
-      height: height/2,
-      // samples: [0,1,2,3,4,5,6,7],
+      width: width,
+      height: height,
+      samples: [0],
       resampleMethod: 'nearest'
     })
 
@@ -124,50 +139,50 @@ export default class extends React.PureComponent<IProps, IState> {
         canvas: this.canvasRef.current,
       });
 
-      /*
-      const { gl } = radar
-      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-      */
-      /*
-      const input = data[0].map((item) => {
-        if(item < 255 ) {
-          return item
-        }
-        return '0'
-      })
-      */
-      const input = data[this.state.step]
+      //const input = data[this.state.step]
 
-      addColorScale("radar", ["#00000000", "#00ffffff"], [0, 1]);
+      // addColorScale("radar", ["#00000000", "#00ffffff"], [0, 1]);
       radar.setColorScale(this.state.palette)
       radar.setDomain([0, 15])
       radar.setNoDataValue(0)
-      radar.setData(input, data.width, data.height)
-      console.log(window.innerWidth, window.innerHeight)
+      radar.setData(data[this.state.step], data.width, data.height)
       radar.render()
+
+      // initalise shaders
+      const gl = initCanvasGL(this.canvasRef.current)
+      /*const image = getCanvasImage(radar.getCanvas())
+      console.log(image)*/
+      handleLoadedImage(gl, this.canvasRef.current, window.innerWidth, window.innerHeight)
       //this.setState({imageData: this.canvasRef.current.toDataURL()})
     }
 
     return (
       <section>
         <canvas ref={this.canvasRef} style={{
-        backgroundColor: '#000000',
-        display: 'block',
-        //width: '100vw',
-        height: '100vh'
+          backgroundColor: '#000000',
+          display: 'hidden',
+          //width: '100vw',
+          height: '100vh'
+        }} />
+        <canvas ref={this.shaderRef} style={{
+          backgroundColor: '#000000',
+          display: 'block',
+          //width: '100vw',
+          height: '100vh'
         }} />
         <nav style={{
             top: '10px',
             left: '10px',
             position: 'absolute',
           }}>
-          <button onClick={() => { this.changePalette() }}>Woah! {this.state.palette}</button>
+          <button onClick={() => { this.changePalette() }}>{this.state.palette}</button>
           <button onClick={() => { this.step(-1) }}>Prev</button>
           <button onClick={() => { this.step(1) }}>Next</button>
+          <img ref={this.imageRef} />
         </nav>
 
         <pre>{JSON.stringify(this.state.cog.gdal, null, 2)}</pre>
-        
+
         {/*<img alt="a visual representation of rainfall" src={this.state.imageData} /> */}
       </section>
     )
