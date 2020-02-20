@@ -2,7 +2,9 @@ import React from 'react'
 
 import { addColorScale, plot } from 'plotty'
 import { fromUrl } from 'geotiff'
-import { initCanvasGL, handleLoadedImage } from './shaders/shaders'
+import GlslCanvas from 'glslCanvas'
+
+import { fPassthrough, fFXAA, vSampleTexture } from './shaders/shaders'
 
 interface IProps {}
 interface IState {
@@ -21,7 +23,6 @@ type COGeoTIFF = {
 
 interface IDefaultProps{}
 
-
 const loadCOG = async (filepath) => {
   // Data to be used by the LineLayer
   const tiff = await fromUrl(filepath)
@@ -34,7 +35,7 @@ const loadCOG = async (filepath) => {
     image: image,
   }
 
-  console.log(cog)
+  console.log(`COG::${filepath} loaded`, cog)
 
   return cog
 }
@@ -73,6 +74,7 @@ const getCanvasImage = (canvas) => {
 // DeckGL react component
 export default class extends React.PureComponent<IProps, IState> {
   static defaultProps: Partial<PropsWithDefaults> = {}
+  glCanvas:any
   canvasRef:any = React.createRef()
   shaderRef:any = React.createRef()
   imageRef:any = React.createRef()
@@ -94,8 +96,11 @@ export default class extends React.PureComponent<IProps, IState> {
   }
 
   async componentDidMount() {
-    // const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/radartifs/radar-cog.tif')
-    const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/monthly_ss_forecast_sample.tif')
+    this.glCanvas = new GlslCanvas(this.shaderRef.current)
+    this.glCanvas.load(fFXAA, vSampleTexture)
+
+    //const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/radartifs/radar-cog.tif')
+    const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/forecast_sample.tif')
     // const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/rain_day_2019.tif')
 
     const width = cog.image.fileDirectory.ImageWidth
@@ -109,11 +114,12 @@ export default class extends React.PureComponent<IProps, IState> {
       window: [x, y, x+width, y+height],
       width: width,
       height: height,
-      // samples: [0],
-      resampleMethod: 'nearest'
+      samples: [5],
     })
 
+
     this.setState({ cog })
+
   }
 
   changePalette() {
@@ -129,7 +135,7 @@ export default class extends React.PureComponent<IProps, IState> {
   step(step: number) {
     const delta = this.state.step + step
     const result = clamp((delta), 0, this.state.cog.data.length-1)
-    console.log(result, this.state.cog.data.length-1)
+
     this.setState({ step: result })
   }
 
@@ -140,15 +146,18 @@ export default class extends React.PureComponent<IProps, IState> {
       const radar = new plot({
         canvas: this.canvasRef.current,
       });
-
+      console.log('RENDERING!')
       //const input = data[this.state.step]
 
-      // addColorScale("radar", ["#00000000", "#00ffffff"], [0, 1]);
+      //addColorScale("radar", ["#ffffff00", "#0000ffff"], [0, 1]);
+      //radar.setColorScale('radar')
       radar.setColorScale(this.state.palette)
-      // radar.setDomain([0, 15])
-      // radar.setNoDataValue(0)
+      radar.setDomain([0, 255])
+      radar.setNoDataValue(0)
       radar.setData(data[this.state.step], data.width, data.height)
       radar.render()
+      this.glCanvas.setUniform('size', 1/data.width, 1/data.height)
+      this.glCanvas.setUniform('u_image', this.canvasRef.current.toDataURL())
       /*
       // initalise shaders
       const gl = initCanvasGL(this.canvasRef.current)
@@ -156,6 +165,7 @@ export default class extends React.PureComponent<IProps, IState> {
       console.log(image)
       handleLoadedImage(this.canvasRef.current, this.canvasRef.current, window.innerWidth, window.innerHeight)
       //this.setState({imageData: this.canvasRef.current.toDataURL()})
+
       */
     }
 
@@ -163,25 +173,23 @@ export default class extends React.PureComponent<IProps, IState> {
       <section>
         <canvas ref={this.canvasRef} style={{
           backgroundColor: '#000000',
-          display: 'hidden',
-          //width: '100vw',
-          height: '100vh'
+          display: 'none',
         }} />
         <canvas ref={this.shaderRef} style={{
           backgroundColor: '#000000',
           display: 'block',
-          //width: '100vw',
-          height: '100vh'
+          width: '100vw',
+          //height: '100vh'
         }} />
+
         <nav style={{
             top: '10px',
             left: '10px',
-            position: 'absolute',
+            position: 'fixed',
           }}>
           <button onClick={() => { this.changePalette() }}>{this.state.palette}</button>
           <button onClick={() => { this.step(-1) }}>Prev</button>
           <button onClick={() => { this.step(1) }}>Next</button>
-          <img ref={this.imageRef} />
         </nav>
 
         <pre>{JSON.stringify(this.state.cog.gdal, null, 2)}</pre>

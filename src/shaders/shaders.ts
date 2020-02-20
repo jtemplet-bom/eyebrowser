@@ -1,374 +1,332 @@
-/*-------------------------------------------------------------------------------------------------------------------*\
-Copyright (c) 2008-2014, Danny Ruijters. All rights reserved.
-http://www.dannyruijters.nl/cubicinterpolation/webgl/
+export const vSampleTexture = `
+#ifdef GL_ES
+precision mediump float;
+#endif
 
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-following conditions are met:
-*  Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-   disclaimer.
-*  Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following
-   disclaimer in the documentation and/or other materials provided with the distribution.
-*  Neither the name of the copyright holders nor the names of its contributors may be used to endorse or promote
-   products derived from this software without specific prior written permission.
+attribute vec2 a_position;
+attribute vec2 a_texCoord;
+varying vec2 v_texCoord;
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-The views and conclusions contained in the software and documentation are those of the authors and should not be
-interpreted as representing official policies, either expressed or implied.
+void main() {
+    gl_Position = vec4(a_position, 0.0, 1.0);
+    v_texCoord = a_texCoord;
+}
+`
 
-When using this code in a scientific project, please cite one or all of the following papers:
-*  Daniel Ruijters and Philippe Th�venaz, GPU Prefilter for Accurate Cubic B-Spline Interpolation, The Computer
-   Journal, vol. 55, no. 1, pp. 15-20, January 2012. http://dannyruijters.nl/docs/cudaPrefilter3.pdf
-*  Daniel Ruijters, Bart M. ter Haar Romeny, and Paul Suetens, Efficient GPU-Based Texture Interpolation using Uniform
-   B-Splines, Journal of Graphics Tools, vol. 13, no. 4, pp. 61-69, 2008.
-\*-------------------------------------------------------------------------------------------------------------------*/
+export const fPassthrough = `
+#ifdef GL_ES
+precision mediump float;
+#endif
+varying vec2 v_texCoord;
+uniform sampler2D u_image;
 
-function initGL(canvas) {
-    let gl;
-    try {
-        gl = canvas.getContext("experimental-webgl");
-        if (gl === null) { gl = canvas.getContext("webgl"); }
-        gl.clearColor(0.0, 0.0, 0.0, 1.0);
-        gl.disable(gl.DEPTH_TEST);
-        gl.zoom = 1.0;
-        gl.translateX = 0.0;
-        gl.translateY = 0.0;
-        gl.rotateAngle = 0.0;
-        gl.filterMode = 0;
-        canvas.gl = gl;
-    } catch (e) {
-    }
-    if (!gl) {
-        alert("Could not initialise WebGL, sorry :-(");
-    }
-    return gl;
+void main(){
+    gl_FragColor = texture2D(u_image, v_texCoord);
+}
+`
+
+export const vhs = `
+#ifdef GL_ES
+precision highp float;
+#endif
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform sampler2D u_buffer0;
+uniform sampler2D u_video;
+uniform vec2 u_videoResolution;
+
+vec3 mod289(vec3 x) {
+	return x - floor(x * (1.0 / 289.0)) * 289.0;
 }
 
-function loadShader(gl, str, type) {
-    const shader = gl.createShader(type);
-    gl.shaderSource(shader, str);
-    gl.compileShader(shader);
-
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        alert(gl.getShaderInfoLog(shader));
-        return null;
-    }
-
-    return shader;
+vec2 mod289(vec2 x) {
+	return x - floor(x * (1.0 / 289.0)) * 289.0;
 }
 
-function compileShader(gl, fragmentShader, vertexShader) {
-    const shaderProgram = gl.createProgram();
-    gl.attachShader(shaderProgram, vertexShader);
-    gl.attachShader(shaderProgram, fragmentShader);
-    gl.linkProgram(shaderProgram);
-
-    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-        alert("Could not initialise shaders");
-    }
-
-    gl.useProgram(shaderProgram);
-    shaderProgram.textureCoordAttribute = gl.getAttribLocation(shaderProgram, "aTextureCoord");
-    gl.enableVertexAttribArray(shaderProgram.textureCoordAttribute);
-    shaderProgram.samplerUniform = gl.getUniformLocation(shaderProgram, "uSampler");
-
-    return shaderProgram;
+vec3 permute(vec3 x) {
+	return mod289(((x*34.0)+1.0)*x);
 }
 
-/* eslint-disable no-multi-str */
-function initShaders(gl) {
-    const shaderPrefilterStr = '\
-        varying vec2 vTextureCoord;                                                 \n\
-        uniform sampler2D uSampler;                                                 \n\
-        uniform vec2 increment;                                                     \n\
-                                                                                    \n\
-        void main(void) {                                                           \n\
-            vec4 w = 1.732176555 * texture2D(uSampler, vTextureCoord);              \n\
-            vec2 im = vTextureCoord - increment;                                    \n\
-            vec2 ip = vTextureCoord + increment;                                    \n\
-            w -= 0.464135309 * (texture2D(uSampler,im)+texture2D(uSampler,ip));     \n\
-            im -= increment; ip += increment;                                       \n\
-            w += 0.124364681 * (texture2D(uSampler,im)+texture2D(uSampler,ip));     \n\
-            im -= increment; ip += increment;                                       \n\
-            w -= 0.033323416 * (texture2D(uSampler,im)+texture2D(uSampler,ip));     \n\
-            im -= increment; ip += increment;                                       \n\
-            w += 0.008928982 * (texture2D(uSampler,im)+texture2D(uSampler,ip));     \n\
-            im -= increment; ip += increment;                                       \n\
-            w -= 0.002392514 * (texture2D(uSampler,im)+texture2D(uSampler,ip));     \n\
-            im -= increment; ip += increment;                                       \n\
-            w += 0.000641072 * (texture2D(uSampler,im)+texture2D(uSampler,ip));     \n\
-            im -= increment; ip += increment;                                       \n\
-            w -= 0.000171775 * (texture2D(uSampler,im)+texture2D(uSampler,ip));     \n\
-            gl_FragColor = w;                                                       \n\
-        }';
+float snoise(vec2 v) {
+	const vec4 C = vec4(0.211324865405187,  // (3.0-sqrt(3.0))/6.0
+						0.366025403784439,  // 0.5*(sqrt(3.0)-1.0)
+					   -0.577350269189626,  // -1.0 + 2.0 * C.x
+						0.024390243902439); // 1.0 / 41.0
+	vec2 i  = floor(v + dot(v, C.yy) );
+	vec2 x0 = v -   i + dot(i, C.xx);
 
-    const shaderCubicStr = '\
-        varying vec2 vTextureCoord;                                                 \n\
-        uniform vec2 nrOfPixels;                                                    \n\
-        uniform mat3 matrix;                                                        \n\
-        uniform sampler2D uSampler;                                                 \n\
-                                                                                    \n\
-        void main(void) {                                                           \n\
-            // shift the coordinate from [0,1] to [-0.5, nrOfPixels-0.5]            \n\
-            //vec2 nrOfPixels = vec2(textureSize2D(uSampler, 0));                   \n\
-            vec2 coordTex = (matrix * vec3(vTextureCoord - 0.5, 1)).xy + 0.5;       \n\
-            vec2 coord_grid = coordTex * nrOfPixels - 0.5;                          \n\
-            vec2 index = floor(coord_grid);                                         \n\
-            vec2 fraction = coord_grid - index;                                     \n\
-            vec2 one_frac = 1.0 - fraction;                                         \n\
-                                                                                    \n\
-            vec2 w0 = 1.0/6.0 * one_frac*one_frac*one_frac;                         \n\
-            vec2 w1 = 2.0/3.0 - 0.5 * fraction*fraction*(2.0-fraction);             \n\
-            vec2 w2 = 2.0/3.0 - 0.5 * one_frac*one_frac*(2.0-one_frac);             \n\
-            vec2 w3 = 1.0/6.0 * fraction*fraction*fraction;                         \n\
-                                                                                    \n\
-            vec2 g0 = w0 + w1;                                                      \n\
-            vec2 g1 = w2 + w3;                                                      \n\
-            vec2 mult = 1.0 / nrOfPixels;                                           \n\
-            //h0 = w1/g0 - 1, move from [-0.5, nrOfVoxels-0.5] to [0,1]             \n\
-            vec2 h0 = mult * ((w1 / g0) - 0.5 + index);                             \n\
-            //h1 = w3/g1 + 1, move from [-0.5, nrOfVoxels-0.5] to [0,1]             \n\
-            vec2 h1 = mult * ((w3 / g1) + 1.5 + index);                             \n\
-                                                                                    \n\
-            // fetch the four linear interpolations                                 \n\
-            vec4 tex00 = texture2D(uSampler, h0);                                   \n\
-            vec4 tex10 = texture2D(uSampler, vec2(h1.x, h0.y));                     \n\
-            tex00 = mix(tex10, tex00, g0.x);  //weigh along the x-direction         \n\
-            vec4 tex01 = texture2D(uSampler, vec2(h0.x, h1.y));                     \n\
-            vec4 tex11 = texture2D(uSampler, h1);                                   \n\
-            tex01 = mix(tex11, tex01, g0.x);  //weigh along the x-direction         \n\
-            gl_FragColor = mix(tex01, tex00, g0.y);  //weigh along the y-direction  \n\
-        }';
+	vec2 i1;
+	i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+	vec4 x12 = x0.xyxy + C.xxzz;
+	x12.xy -= i1;
 
-    const shaderSimpleStr = '\
-        varying vec2 vTextureCoord;                                                 \n\
-        uniform mat3 matrix;                                                        \n\
-        uniform sampler2D uSampler;                                                 \n\
-        void main(void) {                                                           \n\
-            vec2 coordTex = (matrix * vec3(vTextureCoord - 0.5, 1)).xy + 0.5;       \n\
-            gl_FragColor = texture2D(uSampler, coordTex);                           \n\
-        }';
+	i = mod289(i); // Avoid truncation effects in permutation
+	vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
+		  + i.x + vec3(0.0, i1.x, 1.0 ));
 
-    const shaderVertexStr = '\
-        attribute vec2 aTextureCoord;                                               \n\
-        varying vec4 vColor;                                                        \n\
-        varying vec2 vTextureCoord;                                                 \n\
-                                                                                    \n\
-        void main(void) {                                                           \n\
-            vec2 pos = 2.0 * aTextureCoord - 1.0;                                   \n\
-            gl_Position = vec4(pos.x, pos.y, 0.0, 1.0);                             \n\
-            vTextureCoord = aTextureCoord;                                          \n\
-        }';
+	vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+	m = m*m ;
+	m = m*m ;
 
-    const highp = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
-    const precisionTxt = (highp.precision !== 0) ?
-        'precision highp float;\nprecision highp sampler2D;\n' :
-        'precision mediump float;\nprecision mediump sampler2D;\n';
-    const fragmentPrefilter = loadShader(gl, precisionTxt+shaderPrefilterStr, gl.FRAGMENT_SHADER);
-    const fragmentCubic = loadShader(gl, precisionTxt+shaderCubicStr, gl.FRAGMENT_SHADER);
-    const fragmentSimple = loadShader(gl, precisionTxt+shaderSimpleStr, gl.FRAGMENT_SHADER);
-    const vertexShader = loadShader(gl, shaderVertexStr, gl.VERTEX_SHADER);
+	vec3 x = 2.0 * fract(p * C.www) - 1.0;
+	vec3 h = abs(x) - 0.5;
+	vec3 ox = floor(x + 0.5);
+	vec3 a0 = x - ox;
 
-    gl.shaderPrefilter = compileShader(gl, fragmentPrefilter, vertexShader);
-    gl.shaderPrefilter.incrementUniform = gl.getUniformLocation(gl.shaderPrefilter, "increment");
-    gl.shaderCubic = compileShader(gl, fragmentCubic, vertexShader);
-    gl.shaderCubic.nrOfPixelsUniform = gl.getUniformLocation(gl.shaderCubic, "nrOfPixels");
-    gl.shaderCubic.matrixUniform = gl.getUniformLocation(gl.shaderCubic, "matrix");
-    gl.shaderSimple = compileShader(gl, fragmentSimple, vertexShader);
-    gl.shaderSimple.matrixUniform = gl.getUniformLocation(gl.shaderSimple, "matrix");
-}
-/* eslint-enable no-multi-str */
+	m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
 
-function initTextureCoordBuffer(gl) {
-    const textureCoords = [1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0];
-
-    gl.textureCoordBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.textureCoordBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoords), gl.STATIC_DRAW);
-    gl.textureCoordBuffer.itemSize = 2;
-    gl.textureCoordBuffer.numItems = 4;
+	vec3 g;
+	g.x  = a0.x  * x0.x  + h.x  * x0.y;
+	g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+	return 130.0 * dot(m, g);
 }
 
-function initTextureFramebuffer(gl, width, height) {
-    const rttFramebuffer = gl.createFramebuffer();
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, rttFramebuffer);
-
-    var rttTexture = gl.createTexture();
-    rttTexture.width = width;
-    rttTexture.height = height;
-    gl.bindTexture(gl.TEXTURE_2D, rttTexture);
-    var extFloat = gl.getExtension('OES_texture_float');
-    var extFloatBuffer = gl.getExtension('WEBGL_color_buffer_float');
-    var extHalfFloat = gl.getExtension('OES_texture_half_float');
-    var extHalfFloatBuffer = gl.getExtension('EXT_color_buffer_half_float');
-    var texType = (extFloat && extFloatBuffer) ? gl.FLOAT : ((extHalfFloat && extHalfFloatBuffer) ? extHalfFloat.HALF_FLOAT_OES : gl.UNSIGNED_BYTE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, texType, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-    var renderbuffer = gl.createRenderbuffer();
-    gl.bindRenderbuffer(gl.RENDERBUFFER, renderbuffer);
-    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
-
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rttTexture, 0);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, renderbuffer);
-
-    gl.bindTexture(gl.TEXTURE_2D, null);
-    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    return { 'framebuffer': rttFramebuffer, 'texture': rttTexture };
+float rand(vec2 co) {
+	return fract(sin(dot(co.xy,vec2(12.9898,78.233))) * 43758.5453);
 }
 
-function initCanvasGL(canvas) {
-    var devicePixelRatio = window.devicePixelRatio || 1;
-    // set the size of the drawingBuffer based on the size it's displayed.
-    canvas.width = canvas.clientWidth * devicePixelRatio;
-    canvas.height = canvas.clientHeight * devicePixelRatio;
+#if defined(BUFFER_0)
 
-    var gl = initGL(canvas);
-    initShaders(gl);
-    initTextureCoordBuffer(gl);
-    return gl;
-}
+void main() {
+	vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+    float time = u_time * 2.0;
 
-function freeProgram(gl, program) {
-    var shaders = gl.getAttachedShaders(program);
-    for (var n=0, n_max=shaders.length; n < n_max; n++) {
-        gl.deleteShader(shaders[n]);
-    }
-    gl.deleteProgram(program);
-}
+    float noise = max(0.0, snoise(vec2(time, uv.y * 0.3)) - 0.3) * (1.0 / 0.7);
+    noise = noise + (snoise(vec2(time*10.0, uv.y * 2.4)) - 0.5) * 0.15;
+    float xpos = uv.x - noise * noise * 0.25;
+	vec4 color = texture2D(u_video, vec2(xpos, uv.y));
+    color.rgb = mix(color.rgb, vec3(rand(vec2(uv.y * time))), noise * 0.3).rgb;
 
-function freeTextureFramebuffer(gl, buffer) {
-    if (buffer && buffer.framebuffer) {
-        gl.bindFramebuffer(gl.FRAMEBUFFER, buffer.framebuffer);
-        var renderbuffer = gl.getFramebufferAttachmentParameter(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
-        gl.deleteRenderbuffer(renderbuffer);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.deleteFramebuffer(buffer.framebuffer);
-        buffer.framebuffer = null;
-    }
-    if (buffer && buffer.texture) {
-        gl.deleteTexture(buffer.texture);
-        buffer.texture = null;
-    }
-}
-
-/* eslint-disable @typescript-eslint/no-unused-vars */
-function freeResources(gl) {
-    gl.deleteBuffer(gl.textureCoordBuffer);
-    freeTextureFramebuffer(gl, gl.rttFramebufferTextureX);
-    freeTextureFramebuffer(gl, gl.rttFramebufferTextureY);
-    freeProgram(gl, gl.shaderPrefilter);
-    freeProgram(gl, gl.shaderCubic);
-    freeProgram(gl, gl.shaderSimple);
-
-    gl.textureCoordBuffer = null;
-    gl.rttFramebufferTextureX = null;
-    gl.rttFramebufferTextureY = null;
-    gl.shaderPrefilter = null;
-    gl.shaderCubic = null;
-    gl.shaderSimple = null;
-}
-/* eslint-enable @typescript-eslint/no-unused-vars */
-
-function drawTexture(gl, shader) {
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.uniform1i(shader.samplerUniform, 0);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.textureCoordBuffer);
-    gl.vertexAttribPointer(gl.textureCoordAttribute, gl.textureCoordBuffer.itemSize, gl.FLOAT, false, 0, 0);
-
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, gl.textureCoordBuffer.numItems);
-}
-
-function prefilterX(gl, texture) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, gl.rttFramebufferTextureX.framebuffer);
-    gl.viewport(0, 0, texture.width, texture.height);
-    gl.useProgram(gl.shaderPrefilter);
-    gl.uniform2f(gl.shaderPrefilter.incrementUniform, 1.0 / texture.width, 0.0);
-
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-
-    drawTexture(gl, gl.shaderPrefilter);
-}
-
-function prefilterY(gl, texture) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, gl.rttFramebufferTextureY.framebuffer);
-    gl.viewport(0, 0, texture.width, texture.height);
-    gl.useProgram(gl.shaderPrefilter);
-    gl.uniform2f(gl.shaderPrefilter.incrementUniform, 0.0, 1.0 / texture.height);
-
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, gl.rttFramebufferTextureX.texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-
-    drawTexture(gl, gl.shaderPrefilter);
-}
-
-function cubicFilter(gl, texture, width, height) {
-    // Draw final image
-    gl.bindFramebuffer(gl.FRAMEBUFFER, gl.buffer);
-    gl.viewport(0, 0, width, height);
-    var program = (gl.filterMode < 2) ? gl.shaderCubic : gl.shaderSimple;
-    gl.useProgram(program);
-    gl.uniform2f(gl.shaderCubic.nrOfPixelsUniform, texture.width, texture.height);
-    var cos = Math.cos(gl.rotateAngle) * gl.zoom;
-    var sin = Math.sin(gl.rotateAngle);
-    var matrix = [cos, -sin, 0, sin, cos, 0, gl.translateX, gl.translateY, 1];
-    gl.uniformMatrix3fv(program.matrixUniform, false, matrix);
-
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, (gl.filterMode === 3) ? gl.NEAREST : gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, (gl.filterMode === 3) ? gl.NEAREST : gl.LINEAR);
-
-    drawTexture(gl, gl.shaderCubic);
-}
-
-function handleLoadedImage(canvas, image, width, height) {
-    const gl = canvas.gl;
-    if (!gl.myTexture) {
-        gl.myTexture = gl.createTexture();
+    if (floor(mod(gl_FragCoord.y * 0.25, 2.0)) == 0.0) {
+        color.rgb *= 1.0 - (0.15 * noise);
     }
 
-    let texture = gl.myTexture;
-    texture.width = width;
-    texture.height = height;
+    color.g = mix(color.r, texture2D(u_buffer0, vec2(xpos + noise * 0.05, uv.y)).g, 0.25);
+	color.b = mix(color.r, texture2D(u_buffer0, vec2(xpos - noise * 0.05, uv.y)).b, 0.25);
 
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-    if (!gl.rttFramebufferTextureY) {
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-        gl.rttFramebufferTextureX = initTextureFramebuffer(gl, texture.width, texture.height);
-        gl.rttFramebufferTextureY = initTextureFramebuffer(gl, texture.width, texture.height);
-    } else {
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, image);
-    }
-
-    prefilterX(gl, texture);
-    prefilterY(gl, texture);
-    texture = (gl.filterMode === 0) ? gl.rttFramebufferTextureY.texture : texture;
-    cubicFilter(gl, texture, canvas.width, canvas.height);
+	gl_FragColor = color;
 }
 
-// modifications for typescript / esNext by jtemplet-bom
-export {
-    initCanvasGL,
-    handleLoadedImage,
-    loadShader
+#else
+
+void main() {
+	vec2 st = gl_FragCoord.xy / u_resolution.xy;
+	vec3 color = texture2D(u_buffer0, st).rgb;
+	gl_FragColor = vec4(vec3(color.r), 1.0);
 }
+
+#endif
+`
+
+export const simpleNoise = `
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+uniform float u_time;
+
+// Some useful functions
+vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+
+//
+// Description : GLSL 2D simplex noise function
+//      Author : Ian McEwan, Ashima Arts
+//  Maintainer : ijm
+//     Lastmod : 20110822 (ijm)
+//     License :
+//  Copyright (C) 2011 Ashima Arts. All rights reserved.
+//  Distributed under the MIT License. See LICENSE file.
+//  https://github.com/ashima/webgl-noise
+//
+float snoise(vec2 v) {
+
+    // Precompute values for skewed triangular grid
+    const vec4 C = vec4(0.211324865405187,
+                        // (3.0-sqrt(3.0))/6.0
+                        0.366025403784439,
+                        // 0.5*(sqrt(3.0)-1.0)
+                        -0.577350269189626,
+                        // -1.0 + 2.0 * C.x
+                        0.024390243902439);
+                        // 1.0 / 41.0
+
+    // First corner (x0)
+    vec2 i  = floor(v + dot(v, C.yy));
+    vec2 x0 = v - i + dot(i, C.xx);
+
+    // Other two corners (x1, x2)
+    vec2 i1 = vec2(0.0);
+    i1 = (x0.x > x0.y)? vec2(1.0, 0.0):vec2(0.0, 1.0);
+    vec2 x1 = x0.xy + C.xx - i1;
+    vec2 x2 = x0.xy + C.zz;
+
+    // Do some permutations to avoid
+    // truncation effects in permutation
+    i = mod289(i);
+    vec3 p = permute(
+            permute( i.y + vec3(0.0, i1.y, 1.0))
+                + i.x + vec3(0.0, i1.x, 1.0 ));
+
+    vec3 m = max(0.5 - vec3(
+                        dot(x0,x0),
+                        dot(x1,x1),
+                        dot(x2,x2)
+                        ), 0.0);
+
+    m = m*m ;
+    m = m*m ;
+
+    // Gradients:
+    //  41 pts uniformly over a line, mapped onto a diamond
+    //  The ring size 17*17 = 289 is close to a multiple
+    //      of 41 (41*7 = 287)
+
+    vec3 x = 2.0 * fract(p * C.www) - 1.0;
+    vec3 h = abs(x) - 0.5;
+    vec3 ox = floor(x + 0.5);
+    vec3 a0 = x - ox;
+
+    // Normalise gradients implicitly by scaling m
+    // Approximation of: m *= inversesqrt(a0*a0 + h*h);
+    m *= 1.79284291400159 - 0.85373472095314 * (a0*a0+h*h);
+
+    // Compute final noise value at P
+    vec3 g = vec3(0.0);
+    g.x  = a0.x  * x0.x  + h.x  * x0.y;
+    g.yz = a0.yz * vec2(x1.x,x2.x) + h.yz * vec2(x1.y,x2.y);
+    return 130.0 * dot(m, g);
+}
+
+void main() {
+    vec2 st = gl_FragCoord.xy/u_resolution.xy;
+    st.x *= u_resolution.x/u_resolution.y;
+
+    vec3 color = vec3(0.0);
+
+    // Scale the space in order to see the function
+    st *= 10.;
+
+    color = vec3(snoise(st)*.5+.5);
+
+    gl_FragColor = vec4(color,1.0);
+}
+`
+
+export const interpolateBicubic = `
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+uniform sampler2D texture;
+uniform vec2 size;
+varying vec2 v_texCoord;
+float BSpline( float x )
+{
+	float f = abs(x);
+
+	if(f <= 1.0 )
+		return (( 2.0 / 3.0 ) + ( 0.5 ) * ( f * f * f ) - (f * f));
+	else
+	{
+		f = 2.0 - f;
+		return (1.0 / 6.0 * f * f * f);
+	}
+}
+const vec4 offset = vec4(-1.0, 1.0, 1.0 ,-1.0);
+
+vec4 filter(sampler2D tex, vec2 v_texCoord)
+{
+	float fx = fract(v_texCoord.x);
+	float fy = fract(v_texCoord.y);
+	v_texCoord.x -= fx;
+	v_texCoord.y -= fy;
+
+	vec4 xcubic = vec4(BSpline(- 1 - fx), BSpline(-fx), BSpline(1 - fx), BSpline(2 - fx));
+	vec4 ycubic = vec4(BSpline(- 1 - fy), BSpline(-fy), BSpline(1 - fy), BSpline(2 - fy));
+
+	vec4 c = vec4(v_texCoord.x - 0.5, v_texCoord.x + 1.5, v_texCoord.y - 0.5, v_texCoord.y + 1.5);
+	vec4 s = vec4(xcubic.x + xcubic.y, xcubic.z + xcubic.w, ycubic.x + ycubic.y, ycubic.z + ycubic.w);
+	vec4 offset = c + vec4(xcubic.y, xcubic.w, ycubic.y, ycubic.w) / s;
+
+	vec4 sample0 = texture2D(tex, vec2(offset.x, offset.z) / size);
+	vec4 sample1 = texture2D(tex, vec2(offset.y, offset.z) / size);
+	vec4 sample2 = texture2D(tex, vec2(offset.x, offset.w) / size);
+	vec4 sample3 = texture2D(tex, vec2(offset.y, offset.w) / size);
+
+	float sx = s.x / (s.x + s.y);
+	float sy = s.z / (s.z + s.w);
+
+	return mix(mix(sample3, sample2, sx), mix(sample1, sample0, sx), sy);
+}
+
+void main() {
+   gl_FragColor = filter(texture, v_texCoord * size);
+}
+`
+
+export const fFXAA = `
+#ifdef GL_ES
+precision mediump float;
+#endif
+
+uniform sampler2D u_image;
+
+// The inverse of the texture dimensions along X and Y
+uniform vec2 size;
+varying vec2 v_texCoord;
+
+void main() {
+  // The parameters are hardcoded for now, but could be
+  // made into uniforms to control fromt he program.
+  float FXAA_SPAN_MAX = 3.0;
+  float FXAA_REDUCE_MUL = 1.0/4.0;
+  float FXAA_REDUCE_MIN = (1.0/128.0);
+
+  vec3 rgbNW = texture2D(u_image, v_texCoord + (vec2(-1.0, -1.0) * size)).xyz;
+  vec3 rgbNE = texture2D(u_image, v_texCoord + (vec2(+1.0, -1.0) * size)).xyz;
+  vec3 rgbSW = texture2D(u_image, v_texCoord + (vec2(-1.0, +1.0) * size)).xyz;
+  vec3 rgbSE = texture2D(u_image, v_texCoord + (vec2(+1.0, +1.0) * size)).xyz;
+  vec4 rgbM  = texture2D(u_image, v_texCoord);
+
+  vec3 luma = vec3(0.299, 0.587, 0.114);
+  float lumaNW = dot(rgbNW, luma);
+  float lumaNE = dot(rgbNE, luma);
+  float lumaSW = dot(rgbSW, luma);
+  float lumaSE = dot(rgbSE, luma);
+  float lumaM = dot(rgbM.xyz, luma);
+
+  float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
+  float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
+
+  vec2 dir;
+  dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
+  dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
+
+  float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * (0.25 * FXAA_REDUCE_MUL), FXAA_REDUCE_MIN);
+
+  float rcpDirMin = 1.0/(min(abs(dir.x), abs(dir.y)) + dirReduce);
+
+  dir = min(vec2(FXAA_SPAN_MAX,  FXAA_SPAN_MAX),
+        max(vec2(-FXAA_SPAN_MAX, -FXAA_SPAN_MAX), dir * rcpDirMin)) * size;
+
+  vec3 rgbA = (1.0/2.0) * (
+              texture2D(u_image, v_texCoord + dir * (1.0/3.0 - 0.5)).xyz +
+              texture2D(u_image, v_texCoord + dir * (2.0/3.0 - 0.5)).xyz);
+  vec3 rgbB = rgbA * (1.0/2.0) + (1.0/4.0) * (
+              texture2D(u_image, v_texCoord + dir * (0.0/3.0 - 0.5)).xyz +
+              texture2D(u_image, v_texCoord + dir * (3.0/3.0 - 0.5)).xyz);
+  float lumaB = dot(rgbB, luma);
+
+  if((lumaB < lumaMin) || (lumaB > lumaMax)){
+    gl_FragColor.xyz=rgbA;
+  } else {
+    gl_FragColor.xyz=rgbB;
+  }
+  gl_FragColor.a = 1.0;
+}`

@@ -13,6 +13,7 @@
     "deck.gl": "^8.0.14",
     "geotiff": "^1.0.0-beta.7",
     "glsl-canvas-js": "^0.1.7",
+    "glslCanvas": "^0.1.7",
     "konva": "^4.1.5",
     "plotty": "^0.4.1",
     "react": "^16.12.0",
@@ -45,6 +46,7 @@
     ]
   },
   "devDependencies": {
-    "eslint-config-bom": "^0.5.0"
+    "eslint-config-bom": "^0.5.0",
+    "shader-loader": "^1.3.1"
   }
 }
