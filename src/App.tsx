@@ -94,12 +94,14 @@ export default class extends React.PureComponent<IProps, IState> {
   }
 
   async componentDidMount() {
-    const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/radartifs/radar-cog.tif')
+    // const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/radartifs/radar-cog.tif')
+    const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/monthly_ss_forecast_sample.tif')
+    // const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/rain_day_2019.tif')
 
-    const width = 1024
-    const height = 1024
-    const x = 5632
-    const y = 5632
+    const width = cog.image.fileDirectory.ImageWidth
+    const height = cog.image.fileDirectory.ImageLength
+    const x = 0
+    const y = 0
     //const pool = new GeoTIFF.Pool()
 
     cog.data = await cog.image.readRasters({
@@ -107,7 +109,7 @@ export default class extends React.PureComponent<IProps, IState> {
       window: [x, y, x+width, y+height],
       width: width,
       height: height,
-      samples: [0],
+      // samples: [0],
       resampleMethod: 'nearest'
     })
 
@@ -127,7 +129,7 @@ export default class extends React.PureComponent<IProps, IState> {
   step(step: number) {
     const delta = this.state.step + step
     const result = clamp((delta), 0, this.state.cog.data.length-1)
-
+    console.log(result, this.state.cog.data.length-1)
     this.setState({ step: result })
   }
 
@@ -143,17 +145,18 @@ export default class extends React.PureComponent<IProps, IState> {
 
       // addColorScale("radar", ["#00000000", "#00ffffff"], [0, 1]);
       radar.setColorScale(this.state.palette)
-      radar.setDomain([0, 15])
-      radar.setNoDataValue(0)
+      // radar.setDomain([0, 15])
+      // radar.setNoDataValue(0)
       radar.setData(data[this.state.step], data.width, data.height)
       radar.render()
-
+      /*
       // initalise shaders
       const gl = initCanvasGL(this.canvasRef.current)
-      /*const image = getCanvasImage(radar.getCanvas())
-      console.log(image)*/
-      handleLoadedImage(gl, this.canvasRef.current, window.innerWidth, window.innerHeight)
+      const image = getCanvasImage(radar.getCanvas())
+      console.log(image)
+      handleLoadedImage(this.canvasRef.current, this.canvasRef.current, window.innerWidth, window.innerHeight)
       //this.setState({imageData: this.canvasRef.current.toDataURL()})
+      */
     }
 
     return (
