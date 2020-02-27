@@ -1,12 +1,12 @@
 #ifdef GL_ES
-precision highp float;
+precision mediump float;
 #endif
 
 uniform vec2 u_resolution;
 uniform float u_time;
-uniform sampler2D u_buffer0;
+uniform sampler2D u_image;
+uniform vec2 u_imageResolution;
 uniform sampler2D u_video;
-uniform vec2 u_videoResolution;
 
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
@@ -74,8 +74,8 @@ void main() {
         color.rgb *= 1.0 - (0.15 * noise);
     }
 
-    color.g = mix(color.r, texture2D(u_buffer0, vec2(xpos + noise * 0.05, uv.y)).g, 0.25);
-	color.b = mix(color.r, texture2D(u_buffer0, vec2(xpos - noise * 0.05, uv.y)).b, 0.25);
+    color.g = mix(color.r, texture2D(u_image, vec2(xpos + noise * 0.05, uv.y)).g, 0.25);
+	color.b = mix(color.r, texture2D(u_image, vec2(xpos - noise * 0.05, uv.y)).b, 0.25);
 
 	gl_FragColor = color;
 }
@@ -83,8 +83,8 @@ void main() {
 #else
 
 void main() {
-	vec2 st = gl_FragCoord.xy / u_resolution.xy;
-	vec3 color = texture2D(u_buffer0, st).rgb;
+	vec2 st = gl_FragCoord / u_resolution;
+	vec3 color = texture2D(u_image, st).rgb;
 	gl_FragColor = vec4(vec3(color.r), 1.0);
 }
 

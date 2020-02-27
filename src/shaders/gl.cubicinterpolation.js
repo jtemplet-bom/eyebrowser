@@ -23,7 +23,7 @@ The views and conclusions contained in the software and documentation are those 
 interpreted as representing official policies, either expressed or implied.
 
 When using this code in a scientific project, please cite one or all of the following papers:
-*  Daniel Ruijters and Philippe Thévenaz, GPU Prefilter for Accurate Cubic B-Spline Interpolation, The Computer
+*  Daniel Ruijters and Philippe Thï¿½venaz, GPU Prefilter for Accurate Cubic B-Spline Interpolation, The Computer
    Journal, vol. 55, no. 1, pp. 15-20, January 2012. http://dannyruijters.nl/docs/cudaPrefilter3.pdf
 *  Daniel Ruijters, Bart M. ter Haar Romeny, and Paul Suetens, Efficient GPU-Based Texture Interpolation using Uniform
    B-Splines, Journal of Graphics Tools, vol. 13, no. 4, pp. 61-69, 2008.
@@ -106,45 +106,45 @@ function initShaders(gl) {
             w -= 0.000171775 * (texture2D(uSampler,im)+texture2D(uSampler,ip));     \n\
             gl_FragColor = w;                                                       \n\
         }';
-    
-    var shaderCubicStr = '\
-        varying vec2 vTextureCoord;                                                 \n\
-        uniform vec2 nrOfPixels;                                                    \n\
-        uniform mat3 matrix;                                                        \n\
-        uniform sampler2D uSampler;                                                 \n\
-                                                                                    \n\
-        void main(void) {                                                           \n\
-            // shift the coordinate from [0,1] to [-0.5, nrOfPixels-0.5]            \n\
-            //vec2 nrOfPixels = vec2(textureSize2D(uSampler, 0));                   \n\
-            vec2 coordTex = (matrix * vec3(vTextureCoord - 0.5, 1)).xy + 0.5;       \n\
-            vec2 coord_grid = coordTex * nrOfPixels - 0.5;                          \n\
-            vec2 index = floor(coord_grid);                                         \n\
-            vec2 fraction = coord_grid - index;                                     \n\
-            vec2 one_frac = 1.0 - fraction;                                         \n\
-                                                                                    \n\
-            vec2 w0 = 1.0/6.0 * one_frac*one_frac*one_frac;                         \n\
-            vec2 w1 = 2.0/3.0 - 0.5 * fraction*fraction*(2.0-fraction);             \n\
-            vec2 w2 = 2.0/3.0 - 0.5 * one_frac*one_frac*(2.0-one_frac);             \n\
-            vec2 w3 = 1.0/6.0 * fraction*fraction*fraction;                         \n\
-                                                                                    \n\
-            vec2 g0 = w0 + w1;                                                      \n\
-            vec2 g1 = w2 + w3;                                                      \n\
-            vec2 mult = 1.0 / nrOfPixels;                                           \n\
-            //h0 = w1/g0 - 1, move from [-0.5, nrOfVoxels-0.5] to [0,1]             \n\
-            vec2 h0 = mult * ((w1 / g0) - 0.5 + index);                             \n\
-            //h1 = w3/g1 + 1, move from [-0.5, nrOfVoxels-0.5] to [0,1]             \n\
-            vec2 h1 = mult * ((w3 / g1) + 1.5 + index);                             \n\
-                                                                                    \n\
-            // fetch the four linear interpolations                                 \n\
-            vec4 tex00 = texture2D(uSampler, h0);                                   \n\
-            vec4 tex10 = texture2D(uSampler, vec2(h1.x, h0.y));                     \n\
-            tex00 = mix(tex10, tex00, g0.x);  //weigh along the x-direction         \n\
-            vec4 tex01 = texture2D(uSampler, vec2(h0.x, h1.y));                     \n\
-            vec4 tex11 = texture2D(uSampler, h1);                                   \n\
-            tex01 = mix(tex11, tex01, g0.x);  //weigh along the x-direction         \n\
-            gl_FragColor = mix(tex01, tex00, g0.y);  //weigh along the y-direction  \n\
-        }';
-    
+
+    var shaderCubicStr = `
+        varying vec2 vTextureCoord;
+        uniform vec2 nrOfPixels;
+        uniform mat3 matrix;
+        uniform sampler2D uSampler;
+
+        void main(void) {
+            // shift the coordinate from [0,1] to [-0.5, nrOfPixels-0.5]
+            //vec2 nrOfPixels = vec2(textureSize2D(uSampler, 0));
+            vec2 coordTex = (matrix * vec3(vTextureCoord - 0.5, 1)).xy + 0.5;
+            vec2 coord_grid = coordTex * nrOfPixels - 0.5;
+            vec2 index = floor(coord_grid);
+            vec2 fraction = coord_grid - index;
+            vec2 one_frac = 1.0 - fraction;
+
+            vec2 w0 = 1.0/6.0 * one_frac*one_frac*one_frac;
+            vec2 w1 = 2.0/3.0 - 0.5 * fraction*fraction*(2.0-fraction);
+            vec2 w2 = 2.0/3.0 - 0.5 * one_frac*one_frac*(2.0-one_frac);
+            vec2 w3 = 1.0/6.0 * fraction*fraction*fraction;
+
+            vec2 g0 = w0 + w1;
+            vec2 g1 = w2 + w3;
+            vec2 mult = 1.0 / nrOfPixels;
+            //h0 = w1/g0 - 1, move from [-0.5, nrOfVoxels-0.5] to [0,1]
+            vec2 h0 = mult * ((w1 / g0) - 0.5 + index);
+            //h1 = w3/g1 + 1, move from [-0.5, nrOfVoxels-0.5] to [0,1]
+            vec2 h1 = mult * ((w3 / g1) + 1.5 + index);
+
+            // fetch the four linear interpolations
+            vec4 tex00 = texture2D(uSampler, h0);
+            vec4 tex10 = texture2D(uSampler, vec2(h1.x, h0.y));
+            tex00 = mix(tex10, tex00, g0.x);  //weigh along the x-direction
+            vec4 tex01 = texture2D(uSampler, vec2(h0.x, h1.y));
+            vec4 tex11 = texture2D(uSampler, h1);
+            tex01 = mix(tex11, tex01, g0.x);  //weigh along the x-direction
+            gl_FragColor = mix(tex01, tex00, g0.y);  //weigh along the y-direction
+        }`
+
     var shaderSimpleStr = '\
         varying vec2 vTextureCoord;                                                 \n\
         uniform mat3 matrix;                                                        \n\
@@ -153,7 +153,7 @@ function initShaders(gl) {
             vec2 coordTex = (matrix * vec3(vTextureCoord - 0.5, 1)).xy + 0.5;       \n\
             gl_FragColor = texture2D(uSampler, coordTex);                           \n\
         }';
-    
+
     var shaderVertexStr = '\
         attribute vec2 aTextureCoord;                                               \n\
         varying vec4 vColor;                                                        \n\
@@ -164,7 +164,7 @@ function initShaders(gl) {
             gl_Position = vec4(pos.x, pos.y, 0.0, 1.0);                             \n\
             vTextureCoord = aTextureCoord;                                          \n\
         }';
-    
+
     var highp = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
     var precisionTxt = (highp.precision != 0) ?
         'precision highp float;\nprecision highp sampler2D;\n' :
@@ -227,7 +227,7 @@ function initCanvasGL(canvas) {
     // set the size of the drawingBuffer based on the size it's displayed.
     canvas.width = canvas.clientWidth * devicePixelRatio;
     canvas.height = canvas.clientHeight * devicePixelRatio;
-    
+
     var gl = initGL(canvas);
     initShaders(gl);
     initTextureCoordBuffer(gl);
@@ -264,7 +264,7 @@ function freeResources(gl) {
     freeProgram(gl, gl.shaderPrefilter);
     freeProgram(gl, gl.shaderCubic);
     freeProgram(gl, gl.shaderSimple);
-    
+
     gl.textureCoordBuffer = null;
     gl.rttFramebufferTextureX = null;
     gl.rttFramebufferTextureY = null;

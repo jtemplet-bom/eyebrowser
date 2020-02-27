@@ -1,16 +1,18 @@
 import React from 'react'
 
-import { addColorScale, plot } from 'plotty'
+import { plot } from 'plotty'
 import { fromUrl } from 'geotiff'
-import GlslCanvas from 'glslCanvas'
+import glslCanvas from 'glslCanvas'
 
-import { fPassthrough, fFXAA, vSampleTexture } from './shaders/shaders'
+import { fBicubic, fPassthrough, fFXAA, vFXAA, vPassthrough } from './shaders/shaders'
 
 interface IProps {}
 interface IState {
   cog: COGeoTIFF
+  glParams: object
   imageData: string
   palette: string
+  shader: object
   step: number
 }
 type PropsWithDefaults = IProps & IDefaultProps
@@ -19,6 +21,12 @@ type COGeoTIFF = {
   gdal: object,
   image: any,
   data: any
+}
+
+type shaderDef = {
+  name: string,
+  frag: any,
+  vertex?: string
 }
 
 interface IDefaultProps{}
@@ -40,16 +48,23 @@ const loadCOG = async (filepath) => {
   return cog
 }
 
-const plottyAvailablePalettes = [
-  'viridis', 'inferno', 'jet',
-  'hot', 'bone', 'copper',
-  'greys', 'yignbu', 'greens',
-  'yiorrd', 'rdbu', 'picnic',
-  'portland', 'blackbody', 'earth',
-  'electric',  'magma', 'plasma'
+const availablePalettes = [
+  'blackbody', 'viridis', 'inferno', 'jet', 'hot', 'bone', 'copper', 'greys', 'yignbu', 'greens', 'yiorrd', 'rdbu', 'picnic', 'portland', 'earth', 'electric',  'magma', 'plasma'
 ]
 
-const getPalette = () => plottyAvailablePalettes[Symbol.iterator]()
+const getPalette = () => availablePalettes[Symbol.iterator]()
+
+const DEFAULT_VERTEX_SHADER = vPassthrough.default
+const DEFAULT_FRAGMENT_SHADER = fPassthrough.default // eslint-disable-line @typescript-eslint/no-unused-vars
+
+const availableShaders:Array<shaderDef> = [
+  { name: 'no shader', frag: fPassthrough.default },
+  { name: 'fxaa', frag: fFXAA.default, vertex: vFXAA.default },
+  { name: 'bicubic', frag: fBicubic.default },
+  //{ name: 'VHS', frag: fVHS.default }
+]
+
+const getShader = (): IterableIterator<shaderDef> => availableShaders[Symbol.iterator]()
 
 const clamp = (value: number, min: number, max: number):number => {
   const clamped = Math.min(Math.max(value, min), max)
@@ -57,28 +72,14 @@ const clamp = (value: number, min: number, max: number):number => {
   return clamped
 }
 
-const getCanvasImage = (canvas) => {
-  return canvas.toDataURL()
-  const ctx = canvas.getContext("webgl")
-  console.log(canvas, ctx)
-  return ctx.getImageData(0, 0, canvas.width, canvas.height)
-  /*
-  const image = new Image()
-  await canvas.toBlob((blob: Blob) => {
-    image.src = URL.createObjectURL(blob)
-    console.log(image)
-  })
-  return image*/
-}
-
-// DeckGL react component
 export default class extends React.PureComponent<IProps, IState> {
   static defaultProps: Partial<PropsWithDefaults> = {}
   glCanvas:any
   canvasRef:any = React.createRef()
   shaderRef:any = React.createRef()
   imageRef:any = React.createRef()
-  paletteGenerator = getPalette()
+  paletteIterator = getPalette()
+  shaderIterator = getShader()
 
   constructor(props: IProps) {
     super(props)
@@ -89,47 +90,75 @@ export default class extends React.PureComponent<IProps, IState> {
         data: null,
         image: null
       },
+      glParams: {},
       imageData: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-      palette: this.paletteGenerator.next().value,
+      palette: this.paletteIterator.next().value,
+      shader: this.shaderIterator.next().value as shaderDef,
       step: 0
     }
+    console.log(this.state)
   }
 
-  async componentDidMount() {
-    this.glCanvas = new GlslCanvas(this.shaderRef.current)
-    this.glCanvas.load(fFXAA, vSampleTexture)
 
-    //const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/radartifs/radar-cog.tif')
-    const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/forecast_sample.tif')
+  async componentDidMount() {
+    const shader: Partial<shaderDef>  = this.state.shader
+    this.glCanvas = new glslCanvas(this.shaderRef.current)
+    this.glCanvas.load(shader.frag, shader.vertex ? shader.vertex : DEFAULT_VERTEX_SHADER)
+
+    const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/radartifs/radar-cog.tif')
+    //const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/forecast_sample.tif')
     // const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/rain_day_2019.tif')
 
-    const width = cog.image.fileDirectory.ImageWidth
-    const height = cog.image.fileDirectory.ImageLength
-    const x = 0
-    const y = 0
+    const { gl } = this.glCanvas
+    const glParams = {
+      maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE)
+    }
+
+    const width = 1024 //cog.image.fileDirectory.ImageWidth
+    const height = 1024 //cog.image.fileDirectory.ImageLength
+    const x = 5620
+    const y = 6628
     //const pool = new GeoTIFF.Pool()
 
     cog.data = await cog.image.readRasters({
       //pool,
       window: [x, y, x+width, y+height],
-      width: width,
-      height: height,
-      samples: [5],
+      width,
+      height,
+      samples: [0, 1, 2, 3, 4, 5, 6, 7],
     })
 
+    this.setState({ cog, glParams })
+  }
 
-    this.setState({ cog })
+  componentDidUpdate(prevProps: IProps, prevState: IState) {
+    const shader:Partial<shaderDef> = this.state.shader
 
+    this.glCanvas.load(shader.frag, shader.vertex ? shader.vertex : DEFAULT_VERTEX_SHADER)
   }
 
   changePalette() {
-    let next = this.paletteGenerator.next()
+    let next = this.paletteIterator.next()
 
     if(next.done){
-      this.paletteGenerator = getPalette()
-      next = this.paletteGenerator.next()
+      this.paletteIterator = getPalette()
+      next = this.paletteIterator.next()
     }
     this.setState({ palette: next.value})
+  }
+
+  changeShader(event) {
+    event.preventDefault()
+    event.stopPropagation()
+
+    let next = this.shaderIterator.next()
+
+    if(next.done){
+      this.shaderIterator = getShader()
+      next = this.shaderIterator.next()
+    }
+
+    this.setState({ shader: next.value })
   }
 
   step(step: number) {
@@ -140,54 +169,54 @@ export default class extends React.PureComponent<IProps, IState> {
   }
 
   render() {
-    const { data } = this.state.cog
+    const { cog, palette, step } = this.state
+    const shader: Partial<shaderDef>  = this.state.shader
+    let { data } = cog
 
     if(data){
+      //this.canvasRef.current.width = `${data.width * scale}px`
+      //this.canvasRef.current.height = `${data.height * scale}px`
       const radar = new plot({
         canvas: this.canvasRef.current,
+        width: data.width,
+        height: data.height
       });
-      console.log('RENDERING!')
-      //const input = data[this.state.step]
 
-      //addColorScale("radar", ["#ffffff00", "#0000ffff"], [0, 1]);
-      //radar.setColorScale('radar')
-      radar.setColorScale(this.state.palette)
-      radar.setDomain([0, 255])
-      radar.setNoDataValue(0)
-      radar.setData(data[this.state.step], data.width, data.height)
+      radar.setColorScale(palette)
+      radar.setDomain([1, 15])
+      radar.setNoDataValue(-1)
+      radar.setData(data[step], data.width, data.height)
       radar.render()
-      this.glCanvas.setUniform('size', 1/data.width, 1/data.height)
       this.glCanvas.setUniform('u_image', this.canvasRef.current.toDataURL())
-      /*
-      // initalise shaders
-      const gl = initCanvasGL(this.canvasRef.current)
-      const image = getCanvasImage(radar.getCanvas())
-      console.log(image)
-      handleLoadedImage(this.canvasRef.current, this.canvasRef.current, window.innerWidth, window.innerHeight)
-      //this.setState({imageData: this.canvasRef.current.toDataURL()})
-
-      */
+      // console.log(this.glCanvas.uniforms)
     }
 
     return (
       <section>
-        <canvas ref={this.canvasRef} style={{
-          backgroundColor: '#000000',
-          display: 'none',
-        }} />
         <canvas ref={this.shaderRef} style={{
-          backgroundColor: '#000000',
-          display: 'block',
-          width: '100vw',
-          //height: '100vh'
+            backgroundColor: '#000000',
+            display: 'block',
+            float: 'left',
+            width: data ? data.width*2 : '50vw',
+            height: data ? data.height*2 : 0,
+          }} />
+          <canvas ref={this.canvasRef} style={{
+            backgroundColor: '#000000',
+            float: 'left',
+            width: data ? data.width : '50vw',
+            height: data ? data.height : 0,
         }} />
-
         <nav style={{
             top: '10px',
             left: '10px',
             position: 'fixed',
           }}>
-          <button onClick={() => { this.changePalette() }}>{this.state.palette}</button>
+          <button onClick={() => { this.changePalette() }}>{palette}</button>
+          <button
+            key={'changeShader'}
+            onContextMenu={(event) => { this.changeShader(event) }}
+            onClick={(event) => { this.changeShader(event) }}
+          >{shader.name}</button>
           <button onClick={() => { this.step(-1) }}>Prev</button>
           <button onClick={() => { this.step(1) }}>Next</button>
         </nav>
