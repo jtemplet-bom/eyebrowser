@@ -33,8 +33,13 @@ interface IDefaultProps{}
 
 const loadCOG = async (filepath) => {
   // Data to be used by the LineLayer
-  const tiff = await fromUrl(filepath)
-  //const tiff = await fromUrl('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/IDE01452.201807120300.tif')
+  //const tiff = new GeoTIFF(filepath, null, null, null, { cache: true})
+  const tiff = await fromUrl(
+    filepath,
+    {
+      cache: false,
+    }
+  )
   const image = await tiff.getImage()
 
   const cog:COGeoTIFF = {
@@ -86,7 +91,7 @@ export default class extends React.PureComponent<IProps, IState> {
 
     this.state = {
       cog: {
-        gdal: {},
+        gdal: {"loading": true},
         data: null,
         image: null
       },
@@ -105,19 +110,19 @@ export default class extends React.PureComponent<IProps, IState> {
     this.glCanvas = new glslCanvas(this.shaderRef.current)
     this.glCanvas.load(shader.frag, shader.vertex ? shader.vertex : DEFAULT_VERTEX_SHADER)
 
-    const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/radartifs/radar-cog.tif')
-    //const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/forecast_sample.tif')
-    // const cog = await loadCOG('https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com/rain_day_2019.tif')
+    //const cog = await loadCOG('https://d1l0fsdtqs1193.cloudfront.net/radartifs/radar-cog.tif')
+    const cog = await loadCOG('https://d1l0fsdtqs1193.cloudfront.net/forecast_sample.tif')
+    // const cog = await loadCOG('https://d1l0fsdtqs1193.cloudfront.net/rain_day_2019.tif')
 
     const { gl } = this.glCanvas
     const glParams = {
       maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE)
     }
 
-    const width = 1024 //cog.image.fileDirectory.ImageWidth
-    const height = 1024 //cog.image.fileDirectory.ImageLength
-    const x = 5620
-    const y = 6628
+    const width = cog.image.fileDirectory.ImageWidth
+    const height = cog.image.fileDirectory.ImageLength
+    const x = 0
+    const y = 0
     //const pool = new GeoTIFF.Pool()
 
     cog.data = await cog.image.readRasters({
@@ -183,7 +188,8 @@ export default class extends React.PureComponent<IProps, IState> {
       });
 
       radar.setColorScale(palette)
-      radar.setDomain([1, 15])
+      // radar.setDomain([1, 15])
+      radar.setDomain([0, 255])
       radar.setNoDataValue(-1)
       radar.setData(data[step], data.width, data.height)
       radar.render()
@@ -221,8 +227,10 @@ export default class extends React.PureComponent<IProps, IState> {
           <button onClick={() => { this.step(1) }}>Next</button>
         </nav>
 
-        <pre>{JSON.stringify(this.state.cog.gdal, null, 2)}</pre>
-
+        <pre style={{
+          display: 'block',
+          clear: 'both',
+        }}>{JSON.stringify({ ...cog.gdal, ...cog.image ? cog.image.getGeoKeys() : null }, null, 2)}</pre>
         {/*<img alt="a visual representation of rainfall" src={this.state.imageData} /> */}
       </section>
     )
