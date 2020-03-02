@@ -4,7 +4,7 @@ import { plot } from 'plotty'
 import { fromUrl } from 'geotiff'
 import glslCanvas from 'glslCanvas'
 
-import { fBicubic, fPassthrough, fFXAA, vFXAA, vPassthrough } from './shaders/shaders'
+import { fBicubic, fPassthrough, fFXAA, vFXAA, vPassthrough, fCRTLottes, fCRTLottes2, fPhosphorish } from './shaders/shaders'
 
 interface IProps {}
 interface IState {
@@ -37,7 +37,7 @@ const loadCOG = async (filepath) => {
   const tiff = await fromUrl(
     filepath,
     {
-      cache: false,
+      cache: true,
     }
   )
   const image = await tiff.getImage()
@@ -63,9 +63,13 @@ const DEFAULT_VERTEX_SHADER = vPassthrough.default
 const DEFAULT_FRAGMENT_SHADER = fPassthrough.default // eslint-disable-line @typescript-eslint/no-unused-vars
 
 const availableShaders:Array<shaderDef> = [
+  { name: 'phosphorish', frag: fPhosphorish.default },
   { name: 'no shader', frag: fPassthrough.default },
   { name: 'fxaa', frag: fFXAA.default, vertex: vFXAA.default },
   { name: 'bicubic', frag: fBicubic.default },
+
+  //{ name: 'lottes', frag: fCRTLottes.default },
+  //{ name: 'lottes2', frag: fCRTLottes2.default },
   //{ name: 'VHS', frag: fVHS.default }
 ]
 
@@ -110,8 +114,8 @@ export default class extends React.PureComponent<IProps, IState> {
     this.glCanvas = new glslCanvas(this.shaderRef.current)
     this.glCanvas.load(shader.frag, shader.vertex ? shader.vertex : DEFAULT_VERTEX_SHADER)
 
-    //const cog = await loadCOG('https://d1l0fsdtqs1193.cloudfront.net/radartifs/radar-cog.tif')
-    const cog = await loadCOG('https://d1l0fsdtqs1193.cloudfront.net/forecast_sample.tif')
+    const cog = await loadCOG('https://d1l0fsdtqs1193.cloudfront.net/radartifs/radar-cog.tif')
+    //const cog = await loadCOG('https://d1l0fsdtqs1193.cloudfront.net/forecast_sample.tif')
     // const cog = await loadCOG('https://d1l0fsdtqs1193.cloudfront.net/rain_day_2019.tif')
 
     const { gl } = this.glCanvas
@@ -119,18 +123,18 @@ export default class extends React.PureComponent<IProps, IState> {
       maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE)
     }
 
-    const width = cog.image.fileDirectory.ImageWidth
-    const height = cog.image.fileDirectory.ImageLength
-    const x = 0
-    const y = 0
+    const width = 1024//cog.image.fileDirectory.ImageWidth
+    const height = 1024//cog.image.fileDirectory.ImageLength
+    const x = 6000
+    const y = 6000
     //const pool = new GeoTIFF.Pool()
 
     cog.data = await cog.image.readRasters({
       //pool,
       window: [x, y, x+width, y+height],
-      width,
-      height,
-      samples: [0, 1, 2, 3, 4, 5, 6, 7],
+      width: width,
+      height: height,
+      samples: [0,1,2,3,4,5,6,7],
     })
 
     this.setState({ cog, glParams })
@@ -188,8 +192,8 @@ export default class extends React.PureComponent<IProps, IState> {
       });
 
       radar.setColorScale(palette)
-      // radar.setDomain([1, 15])
-      radar.setDomain([0, 255])
+      radar.setDomain([1, 15])
+      //radar.setDomain([0, 255])
       radar.setNoDataValue(-1)
       radar.setData(data[step], data.width, data.height)
       radar.render()
