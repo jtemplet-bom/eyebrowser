@@ -1,0 +1,86 @@
+{
+    "env": {
+      "es6": true,
+      "node": true,
+      "browser": true,
+      "jest": true
+     },
+     "extends": [
+       "plugin:react/recommended",
+       "bom"
+     ],
+     "parser": "@typescript-eslint/parser",
+     "parserOptions": {
+       "sourceType": "module"
+     },
+     "plugins": [
+       "@typescript-eslint",
+       "react"
+     ],
+     "overrides": [{
+       "files": ["**/*.d.ts"],
+       "rules": {
+         "camelcase": "off",
+         "import/prefer-default-export": "off",
+
+         // work around issue where eslint cannot pick up interfaces:
+         // https://github.com/eslint/typescript-eslint-parser/issues/416
+         // we will put interfaces in *.d.ts files and ignore no-undef errors in them
+         "no-undef": "off"
+       }
+     }],
+     "rules": {
+       "arrow-body-style": ["error", "as-needed"],
+       // Ensure consistent use of file extension within the import path
+       // https://github.com/benmosher/eslint-plugin-import/blob/master/docs/rules/extensions.md
+       "import/extensions": ["error", "always", {
+         "js": "never",
+         "mjs": "never",
+         "jsx": "never",
+         "ts": "never",
+         "tsx": "never"
+       }],
+       "import/no-extraneous-dependencies": ["error", {
+         "devDependencies": ["**/*.test.{js,ts,tsx}", "**/*.spec.js"]
+       }],
+       "no-console": "off", // allow console statements for now
+       "no-restricted-globals": ["error", "event", "fdescribe"],
+       "no-trailing-spaces": "warn",
+       "no-undef": "off",
+       "no-unused-vars": "warn",
+       "no-unused-expressions": ["error", {
+         "allowTaggedTemplates": true
+       }],
+       "react/jsx-filename-extension": [1, { "extensions": [".tsx"] }],
+       "react/prefer-stateless-function": "warn",
+       "no-param-reassign": ["error", { "props": true, "ignorePropertyModificationsFor": ["self"] }],
+       "curly": ["error", "all"],
+       "arrow-parens": "off",
+       "class-methods-use-this": "warn",
+       "comma-dangle": ["error", "only-multiline"],
+       "global-require": "warn",
+       "import/no-dynamic-require": "warn",
+       "max-len": "off",
+       "no-case-declarations": "warn",
+       "no-confusing-arrow": "warn",
+       "no-nested-ternary": "warn",
+       "no-plusplus": "off",
+       "prefer-template": "warn", // Unexpected string concatenation
+       "semi": ["error", "never"] // http://eslint.org/docs/rules/semi
+     },
+     "settings": {
+       "import/resolver": {
+         "node": {
+           "extensions": [".mjs", ".js", ".json", ".ts", ".tsx"],
+           "moduleDirectory": ["node_modules", "src/"]
+         }
+       },
+       "import/extensions": [
+         ".js",
+         ".mjs",
+         ".jsx",
+         ".ts",
+         ".tsx"
+       ]
+     }
+   }
