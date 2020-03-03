@@ -6,6 +6,8 @@ export const fPassthrough = require('./fPassthrough.glsl')
 export const fCRTLottes = require('./fCRT-lottes.glsl')
 export const fCRTLottes2 = require('./fCRT-lottes2.glsl')
 export const fPhosphorish = require('./fPhosphorish.glsl')
+export const fGlow = require('./fGlow.glsl')
+
 
 export const fVHS = require('./vhs.glsl')
 

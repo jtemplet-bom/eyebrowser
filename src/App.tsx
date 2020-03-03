@@ -4,7 +4,7 @@ import { plot } from 'plotty'
 import { fromUrl } from 'geotiff'
 import glslCanvas from 'glslCanvas'
 
-import { fBicubic, fPassthrough, fFXAA, vFXAA, vPassthrough, fCRTLottes, fCRTLottes2, fPhosphorish } from './shaders/shaders'
+import { fBicubic, fPassthrough, fFXAA, vFXAA, vPassthrough, fCRTLottes, fCRTLottes2, fPhosphorish, fGlow } from './shaders/shaders'
 
 interface IProps {}
 interface IState {
@@ -63,11 +63,11 @@ const DEFAULT_VERTEX_SHADER = vPassthrough.default
 const DEFAULT_FRAGMENT_SHADER = fPassthrough.default // eslint-disable-line @typescript-eslint/no-unused-vars
 
 const availableShaders:Array<shaderDef> = [
-  { name: 'phosphorish', frag: fPhosphorish.default },
   { name: 'no shader', frag: fPassthrough.default },
-  { name: 'fxaa', frag: fFXAA.default, vertex: vFXAA.default },
+  { name: 'fxaa', frag: fFXAA.default },
   { name: 'bicubic', frag: fBicubic.default },
-
+  //{ name: 'phosphorish', frag: fPhosphorish.default },
+  //{ name: 'glow', frag: fGlow.default },
   //{ name: 'lottes', frag: fCRTLottes.default },
   //{ name: 'lottes2', frag: fCRTLottes2.default },
   //{ name: 'VHS', frag: fVHS.default }
@@ -80,6 +80,10 @@ const clamp = (value: number, min: number, max: number):number => {
 
   return clamped
 }
+
+//const TIF_HOST = 'https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com'
+const TIF_HOST = 'https://d1l0fsdtqs1193.cloudfront.net'
+
 
 export default class extends React.PureComponent<IProps, IState> {
   static defaultProps: Partial<PropsWithDefaults> = {}
@@ -114,27 +118,32 @@ export default class extends React.PureComponent<IProps, IState> {
     this.glCanvas = new glslCanvas(this.shaderRef.current)
     this.glCanvas.load(shader.frag, shader.vertex ? shader.vertex : DEFAULT_VERTEX_SHADER)
 
-    const cog = await loadCOG('https://d1l0fsdtqs1193.cloudfront.net/radartifs/radar-cog.tif')
-    //const cog = await loadCOG('https://d1l0fsdtqs1193.cloudfront.net/forecast_sample.tif')
-    // const cog = await loadCOG('https://d1l0fsdtqs1193.cloudfront.net/rain_day_2019.tif')
+    const cog = await loadCOG(`${TIF_HOST}/radartifs/radar-cog.tif`)
+    //const cog = await loadCOG(`${TIF_HOST}/forecast_sample.tif`)
+    //const cog = await loadCOG(`${TIF_HOST}/rain_day_2019.tif`)
+
 
     const { gl } = this.glCanvas
     const glParams = {
       maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE)
     }
 
-    const width = 1024//cog.image.fileDirectory.ImageWidth
-    const height = 1024//cog.image.fileDirectory.ImageLength
-    const x = 6000
+    const xMax = cog.image.fileDirectory.ImageWidth
+    const yMax = cog.image.fileDirectory.ImageLength
+    const width = 720
+    const height = 480
+    const x = 5000
     const y = 6000
     //const pool = new GeoTIFF.Pool()
 
     cog.data = await cog.image.readRasters({
       //pool,
       window: [x, y, x+width, y+height],
+      //window: [0, 0, xMax, yMax],
       width: width,
       height: height,
-      samples: [0,1,2,3,4,5,6,7],
+      resampleMethod: 'linear',
+      samples: [0,1,2],
     })
 
     this.setState({ cog, glParams })
@@ -207,8 +216,8 @@ export default class extends React.PureComponent<IProps, IState> {
             backgroundColor: '#000000',
             display: 'block',
             float: 'left',
-            width: data ? data.width*2 : '50vw',
-            height: data ? data.height*2 : 0,
+            width: data ? data.width : '50vw',
+            height: data ? data.height : 0,
           }} />
           <canvas ref={this.canvasRef} style={{
             backgroundColor: '#000000',
