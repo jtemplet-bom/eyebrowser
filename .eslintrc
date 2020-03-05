@@ -81,6 +81,9 @@
          ".jsx",
          ".ts",
          ".tsx"
-       ]
+       ],
+       "react": {
+           "version": "detect"
+       }
      }
    }

@@ -1,51 +1,72 @@
-import React from 'react'
-
-import { plot } from 'plotty'
+import React, { CSSProperties } from 'react'
+import { addColorScale, plot as Plot } from 'plotty'
 import { fromUrl } from 'geotiff'
-import glslCanvas from 'glslCanvas'
+import { getStats } from 'geotiff-stats'
+import GLSL from 'glslCanvas'
 
-import { fBicubic, fPassthrough, fFXAA, vFXAA, vPassthrough, fCRTLottes, fCRTLottes2, fPhosphorish, fGlow } from './shaders/shaders'
+import {
+  fBicubic, fPassthrough, fFXAA, vPassthrough, fCRTLottes, fCRTLottes2, fPhosphorish, fGlow, f6xbrz, v6xbrz
+} from './shaders/shaders'
 
 interface IProps {}
+
+interface IDefaultProps{}
+type PropsWithDefaults = IProps & IDefaultProps
+
 interface IState {
   cog: COGeoTIFF
   glParams: object
   imageData: string
   palette: string
-  shader: object
+  shader: shaderDef
   step: number
 }
-type PropsWithDefaults = IProps & IDefaultProps
+
+type GeoTIFFStatItems = {
+  min: number,
+  max: number
+}
+
+type GeoTIFFStats  = {
+  bands:  GeoTIFFStatItems[]
+}
 
 type COGeoTIFF = {
   gdal: object,
   image: any,
-  data: any
+  data: any,
+  stats: GeoTIFFStats
 }
 
 type shaderDef = {
   name: string,
-  frag: any,
+  frag?: string,
   vertex?: string
 }
 
-interface IDefaultProps{}
+type paletteDef = {
+  colours: string[],
+  name: string,
+  stops: number[]
+}
 
-const loadCOG = async (filepath) => {
-  // Data to be used by the LineLayer
-  //const tiff = new GeoTIFF(filepath, null, null, null, { cache: true})
+const loadCOG = async (filepath: string) => {
   const tiff = await fromUrl(
     filepath,
     {
       cache: true,
     }
   )
+  const overview = await tiff.getImage(1)
+  const stats:GeoTIFFStats = getStats(overview)
+
   const image = await tiff.getImage()
 
   const cog:COGeoTIFF = {
     data: '',
     gdal: image.getGDALMetadata(),
-    image: image,
+    image,
+    stats,
   }
 
   console.log(`COG::${filepath} loaded`, cog)
@@ -53,24 +74,51 @@ const loadCOG = async (filepath) => {
   return cog
 }
 
-const availablePalettes = [
-  'blackbody', 'viridis', 'inferno', 'jet', 'hot', 'bone', 'copper', 'greys', 'yignbu', 'greens', 'yiorrd', 'rdbu', 'picnic', 'portland', 'earth', 'electric',  'magma', 'plasma'
+const STOPS_RADAR_FLAT = [
+  0, 1/(16/1), 1/(16/2), 1/(16/3), 1/(16/4), 1/(16/5), 1/(16/6), 1/(16/7), 1/(16/8), 1/(16/9), 1/(16/10), 1/(16/11), 1/(16/12), 1/(16/13), 1/(16/14), 1/(16/15), 1
 ]
+
+
+const availablePalettes = [
+  'blackbody', 'viridis', 'inferno', 'jet', 'hot', 'bone', 'copper', 'greys', 'yignbu', 'greens', 'yiorrd', 'rdbu', 'picnic', 'portland', 'earth', 'electric', 'magma', 'plasma'
+]
+
+const palettes: paletteDef[] = [
+  {
+    name: 'radar-old',
+    colours: [
+    '#00000000', '#f5f5ff00', '#b4b4ff40', '#7778ff80', '#1314ffc0', '#00d9c4ff', '#02968fff', '#006666ff', '#ffff00ff', '#ffc800ff', '#ff9600ff', '#ff6400ff', '#ff0100ff', '#c80000ff', '#780000ff', '#290000ff', '#290000ff'
+    ],
+    stops: STOPS_RADAR_FLAT
+  },
+  {
+    name: 'radar-new',
+    colours: [
+     '#00000000', '#0092ec53', '#0092ec66', '#0092ec99', '#0092eccc', '#2461f5ff', '#0d4addff', '#0d4addff', '#6400a7ff', '#6400a7ff', '#510070ff', '#510070ff', '#3c003aff', '#3c003aff', '#000000ff', '#000000ff', '#000000ff'
+    ],
+    stops: STOPS_RADAR_FLAT
+  }
+]
+
+palettes.forEach(palette => {
+  addColorScale(palette.name, palette.colours, palette.stops)
+  availablePalettes.push(palette.name)
+})
 
 const getPalette = () => availablePalettes[Symbol.iterator]()
 
-const DEFAULT_VERTEX_SHADER = vPassthrough.default
-const DEFAULT_FRAGMENT_SHADER = fPassthrough.default // eslint-disable-line @typescript-eslint/no-unused-vars
+const shaderDefaults = { VERTEX: vPassthrough.default, FRAGMENT: fPassthrough.default }
 
 const availableShaders:Array<shaderDef> = [
-  { name: 'no shader', frag: fPassthrough.default },
+  { name: 'no shader' },
+  { name: '6x brz', frag: f6xbrz.default, vertex: v6xbrz.default },
   { name: 'fxaa', frag: fFXAA.default },
   { name: 'bicubic', frag: fBicubic.default },
-  //{ name: 'phosphorish', frag: fPhosphorish.default },
-  //{ name: 'glow', frag: fGlow.default },
-  //{ name: 'lottes', frag: fCRTLottes.default },
-  //{ name: 'lottes2', frag: fCRTLottes2.default },
-  //{ name: 'VHS', frag: fVHS.default }
+  { name: 'glow', frag: fGlow.default },
+  { name: 'lottes', frag: fCRTLottes.default },
+  { name: 'phosphorish', frag: fPhosphorish.default },
+  // { name: 'lottes2', frag: fCRTLottes2.default },
+  // { name: 'VHS', frag: fVHS.default }
 ]
 
 const getShader = (): IterableIterator<shaderDef> => availableShaders[Symbol.iterator]()
@@ -81,9 +129,10 @@ const clamp = (value: number, min: number, max: number):number => {
   return clamped
 }
 
-//const TIF_HOST = 'https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com'
+// const TIF_HOST = 'https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com'
 const TIF_HOST = 'https://d1l0fsdtqs1193.cloudfront.net'
-
+const DOMAIN_MIN = 0
+const DOMAIN_MAX = 15
 
 export default class extends React.PureComponent<IProps, IState> {
   static defaultProps: Partial<PropsWithDefaults> = {}
@@ -99,110 +148,82 @@ export default class extends React.PureComponent<IProps, IState> {
 
     this.state = {
       cog: {
-        gdal: {"loading": true},
+        gdal: { loading: true },
         data: null,
-        image: null
+        image: null,
+        stats: {
+          bands: [
+            {
+              min: DOMAIN_MIN,
+              max: DOMAIN_MAX
+            }
+          ] as GeoTIFFStatItems[]
+        } as GeoTIFFStats
       },
       glParams: {},
       imageData: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
       palette: this.paletteIterator.next().value,
       shader: this.shaderIterator.next().value as shaderDef,
-      step: 0
+      step: 0,
     }
     console.log(this.state)
   }
 
 
   async componentDidMount() {
-    const shader: Partial<shaderDef>  = this.state.shader
-    this.glCanvas = new glslCanvas(this.shaderRef.current)
-    this.glCanvas.load(shader.frag, shader.vertex ? shader.vertex : DEFAULT_VERTEX_SHADER)
+    const { shader } = this.state
+    this.glCanvas = new GLSL(this.shaderRef.current)
+    this.glCanvas.load(
+      shader.frag ? shader.frag : shaderDefaults.FRAGMENT,
+      shader.vertex ? shader.vertex : shaderDefaults.VERTEX
+    )
 
     const cog = await loadCOG(`${TIF_HOST}/radartifs/radar-cog.tif`)
-    //const cog = await loadCOG(`${TIF_HOST}/forecast_sample.tif`)
-    //const cog = await loadCOG(`${TIF_HOST}/rain_day_2019.tif`)
-
+    // const cog = await loadCOG(`${TIF_HOST}/forecast_sample.tif`)
+    // const cog = await loadCOG(`${TIF_HOST}/rain_day_2019.tif`)
+    const { ImageWidth, ImageLength } = cog.image.fileDirectory
 
     const { gl } = this.glCanvas
     const glParams = {
       maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE)
     }
 
-    const xMax = cog.image.fileDirectory.ImageWidth
-    const yMax = cog.image.fileDirectory.ImageLength
-    const width = 720
-    const height = 480
-    const x = 5000
-    const y = 6000
-    //const pool = new GeoTIFF.Pool()
+    const xMax = ImageWidth <= glParams.maxTextureSize ? ImageWidth : glParams.maxTextureSize
+    const yMax = ImageLength <= glParams.maxTextureSize ? ImageLength : glParams.maxTextureSize
+    const width = 1280 | xMax
+    const height = 720 | yMax
+    const x = 5500
+    const y = 6500
+    // const pool = new GeoTIFF.Pool()
 
     cog.data = await cog.image.readRasters({
-      //pool,
-      window: [x, y, x+width, y+height],
-      //window: [0, 0, xMax, yMax],
-      width: width,
-      height: height,
-      resampleMethod: 'linear',
-      samples: [0,1,2],
+      // pool,
+      window: [x, y, x + width, y + height],
+      // window: [0, 0, xMax, yMax],
+      width,
+      height,
+      samples: [0, 1, 2],
     })
 
     this.setState({ cog, glParams })
   }
 
   componentDidUpdate(prevProps: IProps, prevState: IState) {
-    const shader:Partial<shaderDef> = this.state.shader
+    const { cog, palette, shader, step } = this.state
+    const { data, stats } = cog
 
-    this.glCanvas.load(shader.frag, shader.vertex ? shader.vertex : DEFAULT_VERTEX_SHADER)
-  }
-
-  changePalette() {
-    let next = this.paletteIterator.next()
-
-    if(next.done){
-      this.paletteIterator = getPalette()
-      next = this.paletteIterator.next()
-    }
-    this.setState({ palette: next.value})
-  }
-
-  changeShader(event) {
-    event.preventDefault()
-    event.stopPropagation()
-
-    let next = this.shaderIterator.next()
-
-    if(next.done){
-      this.shaderIterator = getShader()
-      next = this.shaderIterator.next()
-    }
-
-    this.setState({ shader: next.value })
-  }
-
-  step(step: number) {
-    const delta = this.state.step + step
-    const result = clamp((delta), 0, this.state.cog.data.length-1)
-
-    this.setState({ step: result })
-  }
-
-  render() {
-    const { cog, palette, step } = this.state
-    const shader: Partial<shaderDef>  = this.state.shader
-    let { data } = cog
-
-    if(data){
-      //this.canvasRef.current.width = `${data.width * scale}px`
-      //this.canvasRef.current.height = `${data.height * scale}px`
-      const radar = new plot({
+    if (data && stats.bands) {
+      // this.canvasRef.current.width = `${data.width * scale}px`
+      // this.canvasRef.current.height = `${data.height * scale}px`
+      const radar = new Plot({
         canvas: this.canvasRef.current,
         width: data.width,
         height: data.height
-      });
+      })
 
       radar.setColorScale(palette)
-      radar.setDomain([1, 15])
-      //radar.setDomain([0, 255])
+      radar.setDomain([stats.bands[step].min, stats.bands[step].max])
+      // radar.setDomain([0, 255])
       radar.setNoDataValue(-1)
       radar.setData(data[step], data.width, data.height)
       radar.render()
@@ -210,41 +231,120 @@ export default class extends React.PureComponent<IProps, IState> {
       // console.log(this.glCanvas.uniforms)
     }
 
+    this.glCanvas.load(
+      shader.frag ? shader.frag : shaderDefaults.FRAGMENT,
+      shader.vertex ? shader.vertex : shaderDefaults.VERTEX
+    )
+  }
+
+  changePalette(event) {
+    event.preventDefault()
+    event.stopPropagation()
+    const next = availablePalettes.find((palette) => palette === event.target.value)
+
+    if(next) {
+      this.setState({ palette: next })
+    }
+  }
+
+  changeShader(event) {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const next = availableShaders.find((shader) => shader.name === event.target.value)
+
+    if(next) {
+      this.setState({ shader: next })
+    }
+  }
+
+  step(step: number) {
+    const delta = this.state.step + step
+    const result = clamp((delta), 0, this.state.cog.data.length - 1)
+
+    this.setState({ step: result })
+  }
+
+  rangeOnChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const { name } = event.target
+    if(name in this.state) {
+      const newState = {}
+      newState[name] = event.target.value
+      this.setState(newState)
+    } else {
+      throw Error(`InvalidStateError: ${name} is not in IState`)
+    }
+  }
+
+  render() {
+    const { cog, palette, shader, step } = this.state
+    console.log(cog)
+    const { data } = cog
+    const { min, max } = cog.stats.bands ? cog.stats.bands[step] : { min: DOMAIN_MIN, max: DOMAIN_MAX }
+
+    const paletteOptions = availablePalettes.map((aPalette) => <option key={aPalette} value={aPalette}>{aPalette}</option>)
+    const shaderOptions = availableShaders.map((aShader) => <option key={aShader.name} value={aShader.name}>{aShader.name}</option>)
+
+    const controlStyle:CSSProperties = {
+      fontFamily: 'monospace',
+      fontSize: '1rem',
+      fontWeight: 900,
+      textTransform: 'lowercase',
+      padding: '1rem',
+      margin: '2px',
+      border: '1px solid #aaaaaa',
+      backgroundColor: "#000000cc",
+      color: "#cccccc",
+      cursor: "pointer"
+    }
+
     return (
       <section>
         <canvas ref={this.shaderRef} style={{
-            backgroundColor: '#000000',
-            display: 'block',
-            float: 'left',
-            width: data ? data.width : '50vw',
-            height: data ? data.height : 0,
-          }} />
-          <canvas ref={this.canvasRef} style={{
-            backgroundColor: '#000000',
-            float: 'left',
-            width: data ? data.width : '50vw',
-            height: data ? data.height : 0,
+          display: 'block',
+          float: 'left',
+          width: data ? data.width : '50vw',
+          height: data ? data.height : 'auto',
         }} />
+          <canvas ref={this.canvasRef} style={{
+            display: 'none',
+            float: 'left',
+            width: data ? data.width : '50vw',
+            height: data ? data.height : 'auto',
+          }} />
         <nav style={{
-            top: '10px',
-            left: '10px',
-            position: 'fixed',
-          }}>
-          <button onClick={() => { this.changePalette() }}>{palette}</button>
-          <button
+          top: '10px',
+          left: '10px',
+          position: 'fixed',
+          fontSize: '2rem',
+        }}>
+          <select
+            key={'changePalette'}
+            value={palette}
+            style={controlStyle}
+            onChange={(event) => { this.changePalette(event) }}
+          >
+            {paletteOptions}
+          </select>
+          <select
             key={'changeShader'}
-            onContextMenu={(event) => { this.changeShader(event) }}
-            onClick={(event) => { this.changeShader(event) }}
-          >{shader.name}</button>
-          <button onClick={() => { this.step(-1) }}>Prev</button>
-          <button onClick={() => { this.step(1) }}>Next</button>
+            value={shader.name}
+            style={controlStyle}
+            onChange={(event) => { this.changeShader(event) }}
+          >
+            {shaderOptions}
+          </select>
+          <input type="range" name="domainMin" onChange={this.rangeOnChange} min={min} max={max} />
+          <input type="range" name="domainMax" onChange={this.rangeOnChange} min={min} max={max} />
+          <button style={controlStyle} onClick={() => { this.step(-1) }}>Prev</button>
+          <button style={controlStyle} onClick={() => { this.step(1) }}>Next</button>
         </nav>
 
         <pre style={{
           display: 'block',
           clear: 'both',
-        }}>{JSON.stringify({ ...cog.gdal, ...cog.image ? cog.image.getGeoKeys() : null }, null, 2)}</pre>
-        {/*<img alt="a visual representation of rainfall" src={this.state.imageData} /> */}
+        }}>{JSON.stringify({ ...cog.gdal, ...cog.stats || null, ...cog.image ? { ...cog.image.getGeoKeys(), ...cog.image.fileDirectory } : null }, null, 2)}</pre>
+        {/* <img alt="a visual representation of rainfall" src={this.state.imageData} /> */}
       </section>
     )
   }

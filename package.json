@@ -13,6 +13,7 @@
     "craco": "0.0.3",
     "deck.gl": "^8.0.14",
     "geotiff": "^1.0.0-beta.7",
+    "geotiff-stats": "0.0.4",
     "glsl-canvas-js": "^0.1.7",
     "glsl-fxaa": "^3.0.0",
     "glslCanvas": "^0.1.7",

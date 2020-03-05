@@ -62,8 +62,8 @@ vec4 filter(sampler2D tex, vec2 v_texCoord)
 	v_texCoord.x -= fx;
 	v_texCoord.y -= fy;
 
-	vec4 xcubic = vec4(BellFunc(-1. - fx), BellFunc(-fx), BellFunc(1. - fx), BellFunc(2. - fx));
-	vec4 ycubic = vec4(BellFunc(-1. - fy), BellFunc(-fy), BellFunc(1. - fy), BellFunc(2. - fy));
+	vec4 xcubic = vec4(Triangular(-1. - fx), Triangular(-fx), Triangular(1. - fx), Triangular(2. - fx));
+	vec4 ycubic = vec4(Triangular(-1. - fy), Triangular(-fy), Triangular(1. - fy), Triangular(2. - fy));
 
 	vec4 c = vec4(v_texCoord.x - 0.5, v_texCoord.x + 1.5, v_texCoord.y - 0.5, v_texCoord.y + 1.5);
 	vec4 s = vec4(xcubic.x + xcubic.y, xcubic.z + xcubic.w, ycubic.x + ycubic.y, ycubic.z + ycubic.w);
