@@ -20,6 +20,8 @@ interface IState {
   palette: string
   shader: shaderDef
   step: number
+  domainMin: number
+  domainMax: number
 }
 
 type GeoTIFFStatItems = {
@@ -35,7 +37,7 @@ type COGeoTIFF = {
   gdal: object,
   image: any,
   data: any,
-  stats: GeoTIFFStats
+  stats?: GeoTIFFStats
 }
 
 type shaderDef = {
@@ -57,10 +59,19 @@ const loadCOG = async (filepath: string) => {
       cache: true,
     }
   )
-  const overview = await tiff.getImage(1)
-  const stats:GeoTIFFStats = getStats(overview)
-
+    console.log('RAWTIFF', tiff)
+    const imageCount = await tiff.getImageCount()
+  const overview = await tiff.getImage(imageCount - 1)
   const image = await tiff.getImage()
+  const stats:GeoTIFFStats = await getStats(overview)
+  /*const stats:GeoTIFFStats = {
+    bands: [
+      {
+        min: DOMAIN_MIN,
+        max: DOMAIN_MAX
+      }
+    ]
+  }*/
 
   const cog:COGeoTIFF = {
     data: '',
@@ -132,14 +143,13 @@ const clamp = (value: number, min: number, max: number):number => {
 // const TIF_HOST = 'https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com'
 const TIF_HOST = 'https://d1l0fsdtqs1193.cloudfront.net'
 const DOMAIN_MIN = 0
-const DOMAIN_MAX = 15
+const DOMAIN_MAX = 255
 
 export default class extends React.PureComponent<IProps, IState> {
   static defaultProps: Partial<PropsWithDefaults> = {}
   glCanvas:any
   canvasRef:any = React.createRef()
   shaderRef:any = React.createRef()
-  imageRef:any = React.createRef()
   paletteIterator = getPalette()
   shaderIterator = getShader()
 
@@ -162,11 +172,12 @@ export default class extends React.PureComponent<IProps, IState> {
       },
       glParams: {},
       imageData: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-      palette: this.paletteIterator.next().value,
-      shader: this.shaderIterator.next().value as shaderDef,
+      palette: availablePalettes[0],
+      shader: availableShaders[0],
       step: 0,
+      domainMin: DOMAIN_MIN,
+      domainMax: DOMAIN_MAX
     }
-    console.log(this.state)
   }
 
 
@@ -179,7 +190,7 @@ export default class extends React.PureComponent<IProps, IState> {
     )
 
     const cog = await loadCOG(`${TIF_HOST}/radartifs/radar-cog.tif`)
-    // const cog = await loadCOG(`${TIF_HOST}/forecast_sample.tif`)
+    //const cog = await loadCOG(`${TIF_HOST}/forecast_sample.tif`)
     // const cog = await loadCOG(`${TIF_HOST}/rain_day_2019.tif`)
     const { ImageWidth, ImageLength } = cog.image.fileDirectory
 
@@ -190,8 +201,8 @@ export default class extends React.PureComponent<IProps, IState> {
 
     const xMax = ImageWidth <= glParams.maxTextureSize ? ImageWidth : glParams.maxTextureSize
     const yMax = ImageLength <= glParams.maxTextureSize ? ImageLength : glParams.maxTextureSize
-    const width = 1280 | xMax
-    const height = 720 | yMax
+    const width = 1280 || xMax
+    const height = 720 || yMax
     const x = 5500
     const y = 6500
     // const pool = new GeoTIFF.Pool()
@@ -209,10 +220,10 @@ export default class extends React.PureComponent<IProps, IState> {
   }
 
   componentDidUpdate(prevProps: IProps, prevState: IState) {
-    const { cog, palette, shader, step } = this.state
+    const { cog, palette, shader, step, domainMin, domainMax } = this.state
     const { data, stats } = cog
 
-    if (data && stats.bands) {
+    if (data && stats && stats.bands) {
       // this.canvasRef.current.width = `${data.width * scale}px`
       // this.canvasRef.current.height = `${data.height * scale}px`
       const radar = new Plot({
@@ -220,11 +231,11 @@ export default class extends React.PureComponent<IProps, IState> {
         width: data.width,
         height: data.height
       })
-
+      console.log(data, stats)
       radar.setColorScale(palette)
-      radar.setDomain([stats.bands[step].min, stats.bands[step].max])
-      // radar.setDomain([0, 255])
-      radar.setNoDataValue(-1)
+      radar.setDomain([domainMin, domainMax])
+      //radar.setDomain([1, 15])
+      radar.setNoDataValue(0)
       radar.setData(data[step], data.width, data.height)
       radar.render()
       this.glCanvas.setUniform('u_image', this.canvasRef.current.toDataURL())
@@ -278,10 +289,10 @@ export default class extends React.PureComponent<IProps, IState> {
 
   render() {
     const { cog, palette, shader, step } = this.state
-    console.log(cog)
-    const { data } = cog
-    const { min, max } = cog.stats.bands ? cog.stats.bands[step] : { min: DOMAIN_MIN, max: DOMAIN_MAX }
+    const { data, stats } = cog
+    const { min, max } = stats && stats.bands ? stats.bands[0] : { min: DOMAIN_MIN, max: DOMAIN_MAX }
 
+    console.log(this.state)
     const paletteOptions = availablePalettes.map((aPalette) => <option key={aPalette} value={aPalette}>{aPalette}</option>)
     const shaderOptions = availableShaders.map((aShader) => <option key={aShader.name} value={aShader.name}>{aShader.name}</option>)
 
@@ -307,7 +318,7 @@ export default class extends React.PureComponent<IProps, IState> {
           height: data ? data.height : 'auto',
         }} />
           <canvas ref={this.canvasRef} style={{
-            display: 'none',
+            display: 'block',
             float: 'left',
             width: data ? data.width : '50vw',
             height: data ? data.height : 'auto',
@@ -343,7 +354,17 @@ export default class extends React.PureComponent<IProps, IState> {
         <pre style={{
           display: 'block',
           clear: 'both',
-        }}>{JSON.stringify({ ...cog.gdal, ...cog.stats || null, ...cog.image ? { ...cog.image.getGeoKeys(), ...cog.image.fileDirectory } : null }, null, 2)}</pre>
+        }}>
+          {JSON.stringify({ ...cog.gdal, ...cog.stats || null }, null, 2)}
+        </pre>
+        {/*}
+        <pre style={{
+          display: 'block',
+          clear: 'both',
+        }}>
+          {JSON.stringify({ ...cog.image ? { ...cog.image.getGeoKeys(), ...cog.image.fileDirectory } : null }, null, 2)}
+        </pre>
+        /*}
         {/* <img alt="a visual representation of rainfall" src={this.state.imageData} /> */}
       </section>
     )
