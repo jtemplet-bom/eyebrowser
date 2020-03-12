@@ -14,9 +14,8 @@
     "deck.gl": "^8.0.14",
     "geotiff": "^1.0.0-beta.7",
     "geotiff-stats": "0.0.4",
-    "glsl-canvas-js": "^0.1.7",
+    "glsl-canvas-js": "file:../glsl-canvas",
     "glsl-fxaa": "^3.0.0",
-    "glslCanvas": "^0.1.7",
     "plotty": "^0.4.1",
     "react": "^16.12.0",
     "react-dom": "^16.12.0",
@@ -28,7 +27,7 @@
     "typescript": "^3.7.5"
   },
   "scripts": {
-    "start": "craco start",
+    "start": "BROWSER=none craco start",
     "build": "craco build",
     "test": "craco test",
     "eject": "react-scripts eject"

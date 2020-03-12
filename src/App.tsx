@@ -2,11 +2,11 @@ import React, { CSSProperties } from 'react'
 import { addColorScale, plot as Plot } from 'plotty'
 import { fromUrl } from 'geotiff'
 import { getStats } from 'geotiff-stats'
-import GLSL from 'glslCanvas'
-
+import GlslCanvas from "glsl-canvas-js"
 import {
-  fBicubic, fPassthrough, fFXAA, vPassthrough, fCRTLottes, fCRTLottes2, fPhosphorish, fGlow, f6xbrz, v6xbrz
+  fBicubic, fPassthrough, fFXAA, vPassthrough, fCRTLottes, fCRTLottes2, fPhosphorish, fGlow, f6xbrz, v6xbrz, fCrossfade
 } from './shaders/shaders'
+
 
 interface IProps {}
 
@@ -25,7 +25,7 @@ interface IState {
 }
 
 type GeoTIFFStatItems = {
-  min: number,
+  min: number
   max: number
 }
 
@@ -34,21 +34,22 @@ type GeoTIFFStats  = {
 }
 
 type COGeoTIFF = {
-  gdal: object,
-  image: any,
-  data: any,
+  gdal: object
+  image: any
+  data: any
   stats?: GeoTIFFStats
+  overview?: object
 }
 
 type shaderDef = {
-  name: string,
-  frag?: string,
+  name: string
+  frag?: string
   vertex?: string
 }
 
 type paletteDef = {
-  colours: string[],
-  name: string,
+  colours: string[]
+  name: string
   stops: number[]
 }
 
@@ -59,24 +60,16 @@ const loadCOG = async (filepath: string) => {
       cache: true,
     }
   )
-    console.log('RAWTIFF', tiff)
     const imageCount = await tiff.getImageCount()
   const overview = await tiff.getImage(imageCount - 1)
   const image = await tiff.getImage()
   const stats:GeoTIFFStats = await getStats(overview)
-  /*const stats:GeoTIFFStats = {
-    bands: [
-      {
-        min: DOMAIN_MIN,
-        max: DOMAIN_MAX
-      }
-    ]
-  }*/
 
   const cog:COGeoTIFF = {
     data: '',
     gdal: image.getGDALMetadata(),
     image,
+    overview,
     stats,
   }
 
@@ -128,6 +121,8 @@ const availableShaders:Array<shaderDef> = [
   { name: 'glow', frag: fGlow.default },
   { name: 'lottes', frag: fCRTLottes.default },
   { name: 'phosphorish', frag: fPhosphorish.default },
+  { name: 'crossfade', frag: fCrossfade.default },
+
   // { name: 'lottes2', frag: fCRTLottes2.default },
   // { name: 'VHS', frag: fVHS.default }
 ]
@@ -143,7 +138,7 @@ const clamp = (value: number, min: number, max: number):number => {
 // const TIF_HOST = 'https://water-awra-landscape-tiles.s3-ap-southeast-2.amazonaws.com'
 const TIF_HOST = 'https://d1l0fsdtqs1193.cloudfront.net'
 const DOMAIN_MIN = 0
-const DOMAIN_MAX = 255
+const DOMAIN_MAX = 15
 
 export default class extends React.PureComponent<IProps, IState> {
   static defaultProps: Partial<PropsWithDefaults> = {}
@@ -153,6 +148,11 @@ export default class extends React.PureComponent<IProps, IState> {
   paletteIterator = getPalette()
   shaderIterator = getShader()
 
+  radar = new Plot({
+    canvas: this.canvasRef.current,
+    width: 1,
+    height: 1
+  })
   constructor(props: IProps) {
     super(props)
 
@@ -182,8 +182,9 @@ export default class extends React.PureComponent<IProps, IState> {
 
 
   async componentDidMount() {
-    const { shader } = this.state
-    this.glCanvas = new GLSL(this.shaderRef.current)
+    const { shader, step } = this.state
+    this.glCanvas = new GlslCanvas(this.shaderRef.current)
+
     this.glCanvas.load(
       shader.frag ? shader.frag : shaderDefaults.FRAGMENT,
       shader.vertex ? shader.vertex : shaderDefaults.VERTEX
@@ -201,13 +202,13 @@ export default class extends React.PureComponent<IProps, IState> {
 
     const xMax = ImageWidth <= glParams.maxTextureSize ? ImageWidth : glParams.maxTextureSize
     const yMax = ImageLength <= glParams.maxTextureSize ? ImageLength : glParams.maxTextureSize
-    const width = 1280 || xMax
-    const height = 720 || yMax
+    const width = 960 || xMax
+    const height = 480 || yMax
     const x = 5500
     const y = 6500
     // const pool = new GeoTIFF.Pool()
 
-    cog.data = await cog.image.readRasters({
+    const data = await cog.image.readRasters({
       // pool,
       window: [x, y, x + width, y + height],
       // window: [0, 0, xMax, yMax],
@@ -215,31 +216,62 @@ export default class extends React.PureComponent<IProps, IState> {
       height,
       samples: [0, 1, 2],
     })
+    cog.data = data
 
-    this.setState({ cog, glParams })
+    // this.canvasRef.current.width = `${data.width * scale}px`
+      // this.canvasRef.current.height = `${data.height * scale}px`
+    this.radar = new Plot({
+      canvas: this.canvasRef.current,
+      width: data.width,
+      height: data.height
+    })
+    this.radar.setDomain([1, 15])
+    this.radar.setNoDataValue(0)
+    this.radar.setData(data[step], data.width, data.height)
+    this.radar.render()
+    this.glCanvas.setTexture('u_image', this.radar.getCanvas())
+    this.glCanvas.setTexture('u_previous', this.radar.getCanvas())
+
+    this.update({ cog, glParams })
   }
 
-  componentDidUpdate(prevProps: IProps, prevState: IState) {
+  async digestMessage(message) {
+    const msgUint8 = new TextEncoder().encode(message);                           // encode as (utf-8) Uint8Array
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);           // hash the message
+    const hashArray = Array.from(new Uint8Array(hashBuffer));                     // convert buffer to byte array
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join(''); // convert bytes to hex string
+    return hashHex;
+  }
+
+
+  getSnapshotBeforeUpdate(prevProps: IProps, prevState: IState) {
+    if(prevState.step !== this.state.step){
+    this.glCanvas.setTexture('u_previous', this.radar.getCanvas())
+      return true
+    }
+    return null
+  }
+
+  componentDidUpdate(prevProps: IProps, prevState: IState, snapshot: any) {
     const { cog, palette, shader, step, domainMin, domainMax } = this.state
     const { data, stats } = cog
+    const { gl, program } = this.glCanvas
+
+    //console.log(this.state.imageData)
+    //const previous = gl.getUniform(program, gl.getUniformLocation(program, 'u_image'))
 
     if (data && stats && stats.bands) {
       // this.canvasRef.current.width = `${data.width * scale}px`
       // this.canvasRef.current.height = `${data.height * scale}px`
-      const radar = new Plot({
-        canvas: this.canvasRef.current,
-        width: data.width,
-        height: data.height
-      })
-      console.log(data, stats)
-      radar.setColorScale(palette)
-      radar.setDomain([domainMin, domainMax])
-      //radar.setDomain([1, 15])
-      radar.setNoDataValue(0)
-      radar.setData(data[step], data.width, data.height)
-      radar.render()
-      this.glCanvas.setUniform('u_image', this.canvasRef.current.toDataURL())
-      // console.log(this.glCanvas.uniforms)
+      this.radar.setColorScale(palette)
+      this.radar.setDomain([domainMin, domainMax])
+      //this.radar.setDomain([1, 15])
+      this.radar.setNoDataValue(0)
+      this.radar.setData(data[step], data.width, data.height)
+      this.radar.render()
+
+      this.glCanvas.setTexture('u_image', this.radar.getCanvas())
+      this.glCanvas.setUniform('u_frame', step)
     }
 
     this.glCanvas.load(
@@ -254,7 +286,7 @@ export default class extends React.PureComponent<IProps, IState> {
     const next = availablePalettes.find((palette) => palette === event.target.value)
 
     if(next) {
-      this.setState({ palette: next })
+      this.update({ palette: next })
     }
   }
 
@@ -265,7 +297,7 @@ export default class extends React.PureComponent<IProps, IState> {
     const next = availableShaders.find((shader) => shader.name === event.target.value)
 
     if(next) {
-      this.setState({ shader: next })
+      this.update({ shader: next })
     }
   }
 
@@ -273,7 +305,7 @@ export default class extends React.PureComponent<IProps, IState> {
     const delta = this.state.step + step
     const result = clamp((delta), 0, this.state.cog.data.length - 1)
 
-    this.setState({ step: result })
+    this.update({ step: result })
   }
 
   rangeOnChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -281,10 +313,17 @@ export default class extends React.PureComponent<IProps, IState> {
     if(name in this.state) {
       const newState = {}
       newState[name] = event.target.value
-      this.setState(newState)
+      this.update(newState)
     } else {
       throw Error(`InvalidStateError: ${name} is not in IState`)
     }
+  }
+
+  update(state){
+    requestAnimationFrame(() => {
+      //console.log(this.canvasRef.current.toDataURL('image/gif'))
+      this.setState(state)
+    })
   }
 
   render() {
@@ -292,7 +331,6 @@ export default class extends React.PureComponent<IProps, IState> {
     const { data, stats } = cog
     const { min, max } = stats && stats.bands ? stats.bands[0] : { min: DOMAIN_MIN, max: DOMAIN_MAX }
 
-    console.log(this.state)
     const paletteOptions = availablePalettes.map((aPalette) => <option key={aPalette} value={aPalette}>{aPalette}</option>)
     const shaderOptions = availableShaders.map((aShader) => <option key={aShader.name} value={aShader.name}>{aShader.name}</option>)
 
@@ -317,7 +355,7 @@ export default class extends React.PureComponent<IProps, IState> {
           width: data ? data.width : '50vw',
           height: data ? data.height : 'auto',
         }} />
-          <canvas ref={this.canvasRef} style={{
+          <canvas id='bob' ref={this.canvasRef} style={{
             display: 'block',
             float: 'left',
             width: data ? data.width : '50vw',
@@ -355,7 +393,8 @@ export default class extends React.PureComponent<IProps, IState> {
           display: 'block',
           clear: 'both',
         }}>
-          {JSON.stringify({ ...cog.gdal, ...cog.stats || null }, null, 2)}
+          {/*JSON.stringify({ ...cog.gdal, ...cog.stats || null }, null, 2)*/}
+          {/* fakey ? <img src={fakey} /> : null */}
         </pre>
         {/*}
         <pre style={{

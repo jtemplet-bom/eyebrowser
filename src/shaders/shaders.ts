@@ -7,6 +7,7 @@ export const fCRTLottes = require('./fCRT-lottes.glsl')
 export const fCRTLottes2 = require('./fCRT-lottes2.glsl')
 export const fPhosphorish = require('./fPhosphorish.glsl')
 export const fGlow = require('./fGlow.glsl')
+export const fCrossfade = require('./fCrossfade.glsl')
 
 export const v6xbrz = require('./v6xbrz.glsl')
 export const f6xbrz = require('./f6xbrz.glsl')

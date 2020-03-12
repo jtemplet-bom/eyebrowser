@@ -1,3 +1,5 @@
+#version 300 es
+
 /*
    Hyllian's xBR-vertex code and texel mapping
 
@@ -66,7 +68,6 @@
 #endif
 COMPAT_ATTRIBUTE vec4 a_posiiton;
 COMPAT_ATTRIBUTE vec4 a_texCoord;
-COMPAT_ATTRIBUTE vec4 a_color;
 
 COMPAT_VARYING vec4 COL0;
 COMPAT_VARYING vec4 TEX0;
@@ -78,12 +79,12 @@ COMPAT_VARYING vec4 t5;
 COMPAT_VARYING vec4 t6;
 COMPAT_VARYING vec4 t7;
 
-uniform mat4 MVPMatrix;
-uniform COMPAT_PRECISION int FrameDirection;
-uniform COMPAT_PRECISION int FrameCount;
+//uniform mat4 MVPMatrix;
+//uniform COMPAT_PRECISION int FrameDirection;
+//uniform COMPAT_PRECISION int FrameCount;
 uniform COMPAT_PRECISION vec2 u_resolution;
 uniform COMPAT_PRECISION vec2 u_imageResolution;
-uniform COMPAT_PRECISION vec2 ;
+uniform COMPAT_PRECISION float u_time;
 
 // vertex compatibility #defines
 #define VertexCoord a_posiiton;
@@ -93,11 +94,14 @@ uniform COMPAT_PRECISION vec2 ;
 #define OutputSize u_resolution * 4.0
 #define SourceSize vec4(u_imageResolution, 1.0 / u_imageResolution) //either TextureSize or InputSize
 #define outsize vec4(OutputSize, 1.0 / OutputSize)
+vec3 colorA = vec3(0.149,0.141,0.912);
+vec3 colorB = vec3(1.000,0.833,0.224);
 
 void main()
 {
     //gl_Position = MVPMatrix * VertexCoord;
-    COL0 = a_color;
+    float pct = abs(sin(u_time));
+    COL0 = vec4(mix(colorA, colorB, pct), 1.0);
     TEX0.xy = TexCoord.xy;
 	vec2 ps = vec2(SourceSize.z, SourceSize.w);
 	float dx = ps.x;
@@ -116,5 +120,5 @@ void main()
 	t5 = TexCoord.xxxy + vec4( -dx, 0.0, dx, 2.0*dy); // G5 H5 I5
 	t6 = TexCoord.xyyy + vec4(-2.0*dx,-dy, 0.0, dy);  // A0 D0 G0
 	t7 = TexCoord.xyyy + vec4( 2.0*dx,-dy, 0.0, dy);  // C4 F4 I4
-    gl_Position = VertexCoord;
+    //gl_Position = VertexCoord;
 }

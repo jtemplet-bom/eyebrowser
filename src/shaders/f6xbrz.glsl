@@ -1,3 +1,4 @@
+#version 300 es
 /*
    Hyllian's xBR-vertex code and texel mapping
 
