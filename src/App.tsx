@@ -1,8 +1,8 @@
 import React, { CSSProperties } from 'react'
 import { addColorScale, plot as Plot } from 'plotty'
-import { fromUrl } from 'geotiff'
+import { fromUrl, Pool } from 'geotiff'
 import { getStats } from 'geotiff-stats'
-import GlslCanvas from "glsl-canvas-js"
+import GlslCanvas  from "glsl-canvas-js"
 import {
   fBicubic, fPassthrough, fFXAA, vPassthrough, fCRTLottes, fCRTLottes2, fPhosphorish, fGlow, f6xbrz, v6xbrz, fCrossfade
 } from './shaders/shaders'
@@ -139,6 +139,8 @@ const clamp = (value: number, min: number, max: number):number => {
 const TIF_HOST = 'https://d1l0fsdtqs1193.cloudfront.net'
 const DOMAIN_MIN = 0
 const DOMAIN_MAX = 15
+const PLOT_WIDTH = 960
+const PLOT_HEIGHT = 720
 
 export default class extends React.PureComponent<IProps, IState> {
   static defaultProps: Partial<PropsWithDefaults> = {}
@@ -202,19 +204,20 @@ export default class extends React.PureComponent<IProps, IState> {
 
     const xMax = ImageWidth <= glParams.maxTextureSize ? ImageWidth : glParams.maxTextureSize
     const yMax = ImageLength <= glParams.maxTextureSize ? ImageLength : glParams.maxTextureSize
-    const width = 960 || xMax
-    const height = 480 || yMax
+    const width = PLOT_WIDTH || xMax
+    const height = PLOT_HEIGHT || yMax
     const x = 5500
     const y = 6500
-    // const pool = new GeoTIFF.Pool()
+    const pool = new Pool()
 
     const data = await cog.image.readRasters({
-      // pool,
+      pool,
       window: [x, y, x + width, y + height],
       // window: [0, 0, xMax, yMax],
-      width,
-      height,
+      width: width*8,
+      height: height*8,
       samples: [0, 1, 2],
+      resampleMethod: 'bilinear',
     })
     cog.data = data
 
@@ -222,8 +225,8 @@ export default class extends React.PureComponent<IProps, IState> {
       // this.canvasRef.current.height = `${data.height * scale}px`
     this.radar = new Plot({
       canvas: this.canvasRef.current,
-      width: data.width,
-      height: data.height
+      width: width,
+      height: height
     })
     this.radar.setDomain([1, 15])
     this.radar.setNoDataValue(0)
@@ -352,14 +355,14 @@ export default class extends React.PureComponent<IProps, IState> {
         <canvas ref={this.shaderRef} style={{
           display: 'block',
           float: 'left',
-          width: data ? data.width : '50vw',
-          height: data ? data.height : 'auto',
+          width: PLOT_WIDTH,
+          height: PLOT_HEIGHT,
         }} />
           <canvas id='bob' ref={this.canvasRef} style={{
             display: 'block',
             float: 'left',
-            width: data ? data.width : '50vw',
-            height: data ? data.height : 'auto',
+            width: PLOT_WIDTH,
+            height: PLOT_HEIGHT,
           }} />
         <nav style={{
           top: '10px',
