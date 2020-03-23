@@ -2,7 +2,7 @@ import React, { CSSProperties } from 'react'
 import { addColorScale, plot as Plot } from 'plotty'
 import { fromUrl, Pool } from 'geotiff'
 import { getStats } from 'geotiff-stats'
-import GlslCanvas  from "glsl-canvas-js"
+import GlslCanvas from "glsl-canvas-js"
 import {
   fBicubic, fPassthrough, fFXAA, vPassthrough, fCRTLottes, fCRTLottes2, fPhosphorish, fGlow, f6xbrz, v6xbrz, fCrossfade
 } from './shaders/shaders'
@@ -208,10 +208,10 @@ export default class extends React.PureComponent<IProps, IState> {
     const height = PLOT_HEIGHT || yMax
     const x = 5500
     const y = 6500
-    const pool = new Pool()
+    // const pool = new Pool()
 
     const data = await cog.image.readRasters({
-      pool,
+      // pool,
       window: [x, y, x + width, y + height],
       // window: [0, 0, xMax, yMax],
       width: width*8,
