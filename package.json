@@ -14,7 +14,7 @@
     "deck.gl": "^8.0.14",
     "geotiff": "^1.0.0-beta.7",
     "geotiff-stats": "0.0.4",
-    "glsl-canvas-js": "file:../glsl-canvas",
+    "glsl-canvas-js": "git://github.com/jtemplet-bom/glsl-canvas#feature-webpack",
     "glsl-fxaa": "^3.0.0",
     "plotty": "^0.4.1",
     "react": "^16.12.0",
